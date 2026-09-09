@@ -5,4 +5,9 @@ pubDate: 'Jul 08 2022'
 heroImage: '../../assets/blog-placeholder-3.jpg'
 ---
 
-Hello Chat
+<h1>Hello Chat</h1>
+<h3>first software made:</h3>
+
+1. this astro site
+2. java
+3. python!
