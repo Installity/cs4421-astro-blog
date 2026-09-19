@@ -9,9 +9,10 @@ import Header from '../components/Header.astro';
 
 type Props = Omit<CollectionEntry<'blog'>['data'], 'author'> & {
 	author?: CollectionEntry<'authors'>['data'];
+	readingTime: number;
 };
 
-const { title, description, pubDate, updatedDate, heroImage, author } = Astro.props;
+const { title, description, pubDate, updatedDate, heroImage, author, readingTime } = Astro.props;
 ---
 
 <html lang="en">
@@ -53,6 +54,10 @@ const { title, description, pubDate, updatedDate, heroImage, author } = Astro.pr
 				margin-bottom: 0.5em;
 				color: rgb(var(--gray));
 			}
+			.reading-time {
+				margin: 0.5em 0;
+				color: rgb(var(--gray));
+			}
 			.last-updated-on {
 				font-style: italic;
 			}
@@ -79,6 +84,7 @@ const { title, description, pubDate, updatedDate, heroImage, author } = Astro.pr
 							}
 						</div>
 						<h1>{title}</h1>
+						<p class="reading-time">{readingTime} min read</p>
 						<hr />
 					</div>
 					<slot />

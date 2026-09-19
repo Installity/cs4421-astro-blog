@@ -14,8 +14,10 @@ type Props = CollectionEntry<'blog'>;
 const post = Astro.props;
 const author = await getEntry(post.data.author);
 const { Content } = await render(post);
+const wordCount = post.body?.trim().split(/\s+/).filter(Boolean).length ?? 0;
+const readingTime = Math.max(1, Math.ceil(wordCount / 200));
 ---
 
-<BlogPost {...post.data} author={author.data}>
+<BlogPost {...post.data} author={author.data} readingTime={readingTime}>
 	<Content />
 </BlogPost>
