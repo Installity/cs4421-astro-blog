@@ -4,6 +4,9 @@ description: 'Lorem ipsum dolor sit amet'
 pubDate: 'Jul 08 2022'
 author: 'andrew'
 heroImage: '../../assets/blog-placeholder-3.jpg'
+topics:
+  - Astro
+  - Software development
 ---
 
 <h1>Hello Chat</h1>
