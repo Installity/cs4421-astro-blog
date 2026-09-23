@@ -12,7 +12,7 @@
     "preview": "astro preview",
     "astro": "astro",
     "lint": "eslint .",
-    "test:unit": "vitest run"
+    "test": "vitest run"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",
