@@ -12,7 +12,7 @@
     "preview": "astro preview",
     "astro": "astro",
     "lint": "eslint .",
-    "test:unit": "vitest run"
+    "test": "vitest run"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",
@@ -28,6 +28,8 @@
     "esbuild": true
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.2",
     "eslint": "^10.11.0",
     "eslint-plugin-astro": "^3.2.1",
     "typescript-eslint": "^8.70.0",
