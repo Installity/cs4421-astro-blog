@@ -17,8 +17,13 @@ jobs:
       run: npm ci
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps chromium webkit
+    - name: Start Astro dev server
+      run: npx astro dev --background --host 127.0.0.1
     - name: Run Playwright tests
       run: npx playwright test
+    - name: Stop Astro dev server
+      if: ${{ always() }}
+      run: npx astro dev stop
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
