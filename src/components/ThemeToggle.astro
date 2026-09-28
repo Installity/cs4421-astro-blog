@@ -1,0 +1,51 @@
+<button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch color theme">
+	<span class="theme-toggle-label">Toggle theme</span>
+</button>
+
+<script>
+	const button = document.querySelector<HTMLButtonElement>('[data-theme-toggle]');
+
+	function updateButton() {
+		if (!button) return;
+		const isDark = document.documentElement.dataset.theme === 'dark';
+		const label = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+		button.setAttribute('aria-label', label);
+		const text = button.querySelector<HTMLElement>('.theme-toggle-label');
+		if (text) text.textContent = isDark ? 'Light mode' : 'Dark mode';
+	}
+
+	updateButton();
+	button?.addEventListener('click', () => {
+		const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+		document.documentElement.dataset.theme = nextTheme;
+		try {
+			localStorage.setItem('theme', nextTheme);
+		} catch {
+			// The choice still applies to this page when storage is unavailable.
+		}
+		updateButton();
+	});
+</script>
+
+<style>
+	.theme-toggle {
+		flex: none;
+		padding: 0.45rem 0.75rem;
+		border: 1px solid rgb(var(--gray));
+		border-radius: 999px;
+		background: var(--surface);
+		color: rgb(var(--black));
+		font: inherit;
+		font-size: 0.8rem;
+		line-height: 1.2;
+		cursor: pointer;
+	}
+	.theme-toggle:hover {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+	.theme-toggle:focus-visible {
+		outline: 3px solid var(--accent);
+		outline-offset: 3px;
+	}
+</style>

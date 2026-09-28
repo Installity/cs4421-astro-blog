@@ -16,7 +16,6 @@ const { title, description, pubDate, updatedDate, heroImage, author, readingTime
 ---
 
 <html lang="en">
-					{author && <AuthorBio {...author} />}
 	<head>
 		<BaseHead title={title} description={description} />
 		<style>
@@ -88,6 +87,7 @@ const { title, description, pubDate, updatedDate, heroImage, author, readingTime
 						<hr />
 					</div>
 					<slot />
+					{author && <AuthorBio {...author} />}
 				</div>
 			</article>
 		</main>
