@@ -45,3 +45,14 @@ jobs:
 
       - name: Build production site
         run: npm run build
+
+      - name: Install CDK dependencies
+        run: npm ci --prefix cdk --prefer-offline --no-audit
+
+      - name: Check and test CDK stack
+        run: |
+          npm run build --prefix cdk
+          npm test --prefix cdk -- --runInBand
+
+      - name: Synthesize AWS template
+        run: cd cdk && npx cdk synth --quiet
