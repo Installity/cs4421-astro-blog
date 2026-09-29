@@ -2,7 +2,7 @@ import * as path from 'node:path';
 import * as vm from 'node:vm';
 import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
-import { StaticSiteStack } from '../lib/static-site-stack';
+import { StaticSiteStack } from '../lib/cdk-stack';
 
 const app = new cdk.App();
 const stack = new StaticSiteStack(app, 'TestStaticSite', {
