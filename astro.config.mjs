@@ -3,9 +3,15 @@
 import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 import { defineConfig, fontProviders } from 'astro/config';
+import node from '@astrojs/node';
 
 // https://astro.build/config
 export default defineConfig({
+	output: 'server', // Enables on-demand server rendering
+	adapter: node({
+		mode: 'standalone', // Self-contained HTTP server listening on a port
+	}),
+
 	site: 'https://example.com',
 	integrations: [mdx(), sitemap()],
 	fonts: [
