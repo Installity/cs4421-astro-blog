@@ -1,0 +1,3 @@
+{
+  "app": "npx --prefix cdk tsx cdk/bin/cdk.ts"
+}
