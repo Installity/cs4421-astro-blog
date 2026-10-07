@@ -5,7 +5,8 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
 		test.use({ viewport });
 
 		test('shows related articles after the post and opens each correct destination', async ({ page }) => {
-			await page.goto('/blog/using-mdx/');
+			// A cold dev server can reload after optimizing the first MDX request.
+			await page.goto('/blog/using-mdx/', { waitUntil: 'networkidle' });
 			const section = page.getByRole('region', { name: 'Related articles' });
 			await section.scrollIntoViewIfNeeded();
 			await expect(section).toBeVisible();
