@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import * as cdk from 'aws-cdk-lib';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { Construct } from 'constructs';
@@ -52,7 +53,15 @@ function handler(event) {
       defaultRootObject: 'index.html',
     });
 
+    // Use a separate, generated name: the existing deployment Lambda already
+    // created its default log group outside CloudFormation in older deployments.
+    const deploymentLogs = new logs.LogGroup(this, 'SiteDeploymentLogs', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
     new s3deploy.BucketDeployment(this, 'DeploySite', {
+      logGroup: deploymentLogs,
       sources: [s3deploy.Source.asset(props.sitePath ?? path.resolve(__dirname, '../../dist'))],
       destinationBucket: siteBucket,
       distribution,

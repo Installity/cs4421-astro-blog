@@ -99,3 +99,39 @@ release tag. Manual workflow runs validate the image without publishing it.
 
 Publishing an image does not deploy a running container. The existing static CDK
 deployment remains a separate workflow.
+
+## AWS deployment repairs
+
+The ECS Express service uses `ecsInfrastructureRoleForExpressServices` with the
+AWS-managed `AmazonECSInfrastructureRoleforExpressGatewayServices` policy and
+an `ecs.amazonaws.com` trust principal. The October 2026 deployment also needed
+additional permissions identified by CloudTrail. The supplemental policy in
+`deployment/ecs-infrastructure-policy.json` is already attached as
+`AstroBlogExpressServiceOperations`. To restore it if the role is recreated:
+
+```sh
+aws iam put-role-policy \
+  --role-name ecsInfrastructureRoleForExpressServices \
+  --policy-name AstroBlogExpressServiceOperations \
+  --policy-document file://deployment/ecs-infrastructure-policy.json
+```
+
+Service operations and scaling-alarm creation are restricted to
+`default/astro-blog`; VPC security-group discovery is restricted to its VPC.
+The remaining EC2 and CloudWatch read operations require a wildcard resource
+and are restricted to `us-east-1`.
+This supplements the AWS-managed policy; it does not replace it. Edit the account,
+region and service ARN before using this policy in another environment.
+
+After repairing permissions, retry through the ECS Express service's **Update**
+action, keeping the desired image, container port `4321` and health check path
+`/api/health`. Wait for a successful deployment and a healthy load-balancer target,
+then open the service's HTTPS application URL. `Active` alone does not mean a task
+is running. Service-linked roles for ECS, load balancing and Application Auto
+Scaling must also exist and have propagated before the retry.
+
+The static CDK deployment uses a separate CloudFormation-managed log group for
+its asset-deployment Lambda. This avoids trying to recreate the default Lambda
+log group left by earlier deployments. Historical logs are preserved, and new
+deployment logs have 30-day retention. The existing main-branch CDK workflow
+deploys this configuration automatically after merge.
