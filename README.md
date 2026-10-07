@@ -1,180 +1,41 @@
-# Astro Starter Kit: Blog
+# Andrei Turcan — Software Notes
+
+A personal Astro blog about building software, learning through prototypes, and following technology news. The site combines project writing with a portfolio-inspired cream/charcoal design, red accents, locally hosted Geist fonts, and animated dotted waves.
+
+## Content and experience
+
+- **Home, Blog, and About:** two first-person software articles exploring Velsat’s CanSat sensor integration and radio telemetry, and ExGlass’s camera processing, classification, alerts, and prototype limitations.
+- **Reading tools:** search, topic filters, reading time, author profiles, related articles, RSS, and a sitemap.
+- **Tech News:** publisher-filtered headlines from TechCrunch, The Verge, Ars Technica, Irish Tech News, TechCentral.ie, and TechBuzzIreland, with six recent headlines on Home. Links open the original publisher articles.
+- **Accessibility:** responsive layouts, light/dark themes, keyboard navigation, and background animation that can be paused and respects reduced-motion preferences.
+
+## Technical design
+
+Astro components and shared layouts render typed Markdown/MDX content collections. Native browser scripts handle themes, canvas animation, and news interactions; TypeScript supports the application and AWS CDK infrastructure.
+
+The Node server exposes `GET /api/news`, using native `fetch` and `rss-parser` for RSS/Atom. Six fixed feeds are fetched concurrently with an eight-second timeout and a 2 MB limit per source. Headlines are normalized, deduplicated, and sorted; output uses plain text and HTTP/HTTPS links. Each source has a 15-minute memory cache, shared refresh requests, and up to 24 hours of stale data after failures. Partial outages retain working sources. Caches reset on restart and are independent across instances.
+
+News loads on page entry and refreshes every 15 minutes while the tab is visible. There is no scheduled polling without visitors.
+
+## Running and configuration
+
+Use Node.js 22.12 or newer:
 
 ```sh
-npm create astro@latest -- --template blog
+npm ci
+npm run dev -- --background
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+Manage the preview with `npx astro dev status`, `npx astro dev logs`, and `npx astro dev stop`.
 
-Features:
+`npm run build` produces a static site. `ASTRO_OUTPUT=server npm run build` produces the Node server, including `/api/news` and `/api/health`; the Dockerfile uses this server configuration.
 
-- ✅ Minimal styling (make it your own!)
-- ✅ 100/100 Lighthouse performance
-- ✅ SEO-friendly with canonical URLs and Open Graph data
-- ✅ Sitemap support
-- ✅ RSS Feed support
-- ✅ Markdown & MDX support
+Server deployments use same-origin news requests. Static builds require `PUBLIC_NEWS_API_URL`, set before building to a complete HTTPS endpoint on a running server. Set that server’s `NEWS_ALLOWED_ORIGINS` to the permitted static-site origins, separated by commas. Without an API URL, static pages display a clear unavailable state. See [.env.example](.env.example).
 
-## 🚀 Project Structure
+## Demonstrating the SDLC
 
-Inside of your Astro project, you'll see the following folders and files:
+This repository demonstrates requirements planning, implementation, verification, delivery, and maintenance: project reports inform the articles; shared components and typed schemas organize the design; feature branches and pull requests make changes reviewable.
 
-```text
-├── public/
-├── src/
-│   ├── assets/
-│   ├── components/
-│   ├── content/
-│   ├── layouts/
-│   └── pages/
-├── astro.config.mjs
-├── README.md
-├── package.json
-└── tsconfig.json
-```
+GitHub Actions runs lint, Astro checks, unit tests, Chromium/WebKit browser tests, production builds, CDK tests/synthesis, and container health checks. Feed fixtures cover parsing, caching, timeouts, and outages; browser checks cover navigation, filtering, themes, and responsive layouts. Run `npm run lint`, `npm run check`, and `npm test` locally after installing CDK dependencies with `npm ci --prefix cdk`.
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
-
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
-
-The `src/content/` directory contains "collections" of related Markdown and MDX documents. Use `getCollection()` to retrieve posts from `src/content/blog/`, and type-check your frontmatter using an optional schema. See [Astro's Content Collections docs](https://docs.astro.build/en/guides/content-collections/) to learn more.
-
-Any static assets, like images, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `git`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Check out [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
-
-## Credit
-
-This theme is based off of the lovely [Bear Blog](https://github.com/HermanMartinus/bearblog/).
-
-## Container builds and publishing
-
-The default `npm run build` creates the static site used by the CDK deployment.
-The Dockerfile sets `ASTRO_OUTPUT=server` during its build to produce an Astro
-Node server with a live `/api/health` endpoint.
-
-With OrbStack running, build and test the container locally:
-
-```sh
-docker build --platform linux/amd64 -t astro-blog:local .
-docker run -d --platform linux/amd64 --name astro-blog-local \
-  -p 4321:4321 -e NODE_ENV=production astro-blog:local
-curl --fail http://localhost:4321/api/health
-docker inspect astro-blog-local --format '{{.State.Health.Status}}'
-```
-
-Stop any development server using port 4321 before starting the container.
-Health initially reports `starting`; allow about 30 seconds for the first probe.
-Use `docker stop astro-blog-local` and `docker rm astro-blog-local` before
-creating a new container from a rebuilt image.
-
-The Continuous Integration workflow runs the existing project checks, then
-builds a Linux AMD64 image and verifies its Docker health check on pull requests.
-After a push or merge to `main`, it also publishes the tested image to the
-`astro-blog` ECR repository in `us-east-1`. The workflow summary records its URI.
-Publishing uses the `GitHubActionsAstroECR` IAM role via OIDC, without permanent
-AWS access keys. The role trusts only this repository's `main` branch.
-
-The workflow includes defaults for this project's AWS region and publishing role.
-Optional repository Actions variables `AWS_REGION` and `AWS_ECR_ROLE_ARN` can
-override them; update the role's ECR permissions when changing the destination.
-Image tags include the commit SHA, run ID, and attempt, so each run has a unique
-tag compatible with the repository's immutable tags. `v1.0.0` remains the lab
-release tag. Manual workflow runs validate the image without publishing it.
-
-Publishing an image does not deploy a running container. The existing static CDK
-deployment remains a separate workflow.
-
-## AWS deployment repairs
-
-The ECS Express service uses `ecsInfrastructureRoleForExpressServices` with the
-AWS-managed `AmazonECSInfrastructureRoleforExpressGatewayServices` policy and
-an `ecs.amazonaws.com` trust principal. The October 2026 deployment also needed
-additional permissions identified by CloudTrail. The supplemental policy in
-`deployment/ecs-infrastructure-policy.json` is already attached as
-`AstroBlogExpressServiceOperations`. To restore it if the role is recreated:
-
-```sh
-aws iam put-role-policy \
-  --role-name ecsInfrastructureRoleForExpressServices \
-  --policy-name AstroBlogExpressServiceOperations \
-  --policy-document file://deployment/ecs-infrastructure-policy.json
-```
-
-Service operations and scaling-alarm creation are restricted to
-`default/astro-blog`; VPC security-group discovery is restricted to its VPC.
-The remaining EC2 and CloudWatch read operations require a wildcard resource
-and are restricted to `us-east-1`.
-This supplements the AWS-managed policy; it does not replace it. Edit the account,
-region and service ARN before using this policy in another environment.
-
-After repairing permissions, retry through the ECS Express service's **Update**
-action, keeping the desired image, container port `4321` and health check path
-`/api/health`. Wait for a successful deployment and a healthy load-balancer target,
-then open the service's HTTPS application URL. `Active` alone does not mean a task
-is running. Service-linked roles for ECS, load balancing and Application Auto
-Scaling must also exist and have propagated before the retry.
-
-The static CDK deployment uses a separate CloudFormation-managed log group for
-its asset-deployment Lambda. This avoids trying to recreate the default Lambda
-log group left by earlier deployments. Historical logs are preserved, and new
-deployment logs have 30-day retention. The existing main-branch CDK workflow
-deploys this configuration automatically after merge.
-
-## Personal blog and live technology news
-
-The two Markdown articles live in `src/content/blog`. They use the existing
-`andrew` author reference; the public author name is Andrei Turcan. The site
-shares a portfolio-inspired layout, local Geist fonts, and animated dotted
-waves. Background motion respects reduced-motion settings and can be paused.
-
-The server build provides `GET /api/news`. It fetches the six configured
-RSS/Atom feeds concurrently, with an eight-second timeout and a 2 MB limit per
-feed. Each source is cached for 15 minutes; failed refreshes retain its last
-successful headlines for up to 24 hours. Failures are retried after one minute.
-Requests share in-flight refreshes within a process. Caches reset on restart
-and are independent across server instances. No API keys are required.
-
-Responses contain `items`, `sources`, and `checkedAt`. Items have `id`, `title`,
-`url`, `sourceId`, `sourceName`, and nullable ISO `publishedAt`. Sources have
-`id`, `name`, `status` (`ok`, `stale`, or `unavailable`), and nullable
-`lastSuccessfulFetch`. Results contain up to ten headlines per publisher,
-sorted newest first and deduplicated by article URL. Missing dates sort last.
-Partial failures still return usable results; no usable items yields HTTP 503.
-The API accepts no upstream URL parameters. Browser output uses plain text,
-not feed HTML. TechCentral.ie may reject automated requests with HTTP 403;
-its status is shown without interrupting other publishers.
-
-Development and `ASTRO_OUTPUT=server npm run build` use same-origin `/api/news`.
-The default static build omits that runtime endpoint. To enable live news on
-the static site, set `PUBLIC_NEWS_API_URL` to the complete HTTPS URL of an
-already-running server API **before building**, and set `NEWS_ALLOWED_ORIGINS`
-in that server's runtime environment to the static site's exact origin.
-Multiple origins can be separated by commas; no wildcard is supported.
-Without a configured URL, static pages show the unavailable message and make
-no news request. A configured URL with a down server or incorrect CORS settings
-shows a retryable unavailable state. See `.env.example`.
-
-Home shows six headlines; `/news/` shows the full collection with publisher
-filters and source availability. Browsers refresh on entry, every 15 minutes
-while visible, and when returning to a tab after that interval. Manual refresh
-respects the server cache. News remains separate from personal articles and
-links readers to publishers rather than republishing full article content.
-
-No infrastructure or deployment changes are needed for same-origin server
-news. Publishing a container image still does not deploy a running API.
+Main-branch workflows handle the static AWS CDK deployment and publish tested container images to ECR using OIDC. Publishing an image is separate from deploying a running API. [Review screenshots](docs/verification/README.md) document the redesigned interface.
