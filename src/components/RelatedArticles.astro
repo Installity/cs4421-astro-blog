@@ -1,0 +1,52 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import FormattedDate from './FormattedDate.astro';
+
+type Post = Pick<CollectionEntry<'blog'>, 'id' | 'data'>;
+interface Props {
+	currentPost: Post;
+	posts: Post[];
+}
+
+const { currentPost, posts } = Astro.props;
+const topics = new Set(currentPost.data.topics);
+const relatedPosts = posts
+	.filter((post) => post.id !== currentPost.id)
+	.map((post) => ({
+		post,
+		sharedTopics: [...new Set(post.data.topics)].filter((topic) => topics.has(topic)).length,
+	}))
+	.filter(({ sharedTopics }) => sharedTopics > 0)
+	.sort((a, b) => b.sharedTopics - a.sharedTopics || b.post.data.pubDate.valueOf() - a.post.data.pubDate.valueOf())
+	.slice(0, 3);
+---
+
+{relatedPosts.length > 0 && (
+	<section aria-labelledby="related-articles-heading">
+		<h2 id="related-articles-heading">Related articles</h2>
+		<ul>
+			{relatedPosts.map(({ post }) => (
+				<li>
+					<h3><a href={`/blog/${post.id}/`}>{post.data.title}</a></h3>
+					<p class="date"><FormattedDate date={post.data.pubDate} /></p>
+					<p>{post.data.description}</p>
+				</li>
+			))}
+		</ul>
+	</section>
+)}
+
+<style>
+	section {
+		margin-top: 2rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid rgb(var(--gray-light));
+	}
+	h2 { font-size: 1.563em; }
+	ul { list-style: none; padding: 0; margin: 0; }
+	li { padding: 1rem 0; }
+	li + li { border-top: 1px solid rgb(var(--gray-light)); }
+	h3 { font-size: 1.25em; margin: 0; overflow-wrap: anywhere; }
+	p { margin: 0.5rem 0 0; }
+	.date { color: rgb(var(--gray)); font-size: 0.9em; }
+</style>
