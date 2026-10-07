@@ -1,5 +1,5 @@
 ---
-import { getEntry, render } from 'astro:content';
+import { getCollection, getEntry, render } from 'astro:content';
 import BlogPost from '../../layouts/BlogPost.astro';
 
 export const prerender = false;
@@ -22,8 +22,9 @@ if (!author) {
 const { Content } = await render(post);
 const wordCount = post.body?.trim().split(/\s+/).filter(Boolean).length ?? 0;
 const readingTime = Math.max(1, Math.ceil(wordCount / 200));
+const posts = await getCollection('blog');
 ---
 
-<BlogPost {...post.data} author={author.data} readingTime={readingTime}>
+<BlogPost {...post.data} author={author.data} readingTime={readingTime} currentPost={post} {posts}>
 	<Content />
 </BlogPost>
