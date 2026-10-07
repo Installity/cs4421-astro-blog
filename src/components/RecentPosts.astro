@@ -1,0 +1,56 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import FormattedDate from './FormattedDate.astro';
+
+interface Props {
+	posts: Pick<CollectionEntry<'blog'>, 'id' | 'data'>[];
+}
+
+const recentPosts = [...Astro.props.posts]
+	.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
+	.slice(0, 3);
+---
+
+<section aria-labelledby="recent-posts-heading">
+	<h2 id="recent-posts-heading">Recent posts</h2>
+	<ul class="recent-posts">
+		{recentPosts.map((post) => (
+			<li>
+				<article>
+					<h3><a href={`/blog/${post.id}/`}>{post.data.title}</a></h3>
+					<p class="date"><FormattedDate date={post.data.pubDate} /></p>
+					<p>{post.data.description}</p>
+				</article>
+			</li>
+		))}
+	</ul>
+	<a href="/blog/">View all posts</a>
+</section>
+
+<style>
+	section {
+		margin: 2rem 0 3rem;
+	}
+	h2 {
+		font-size: 1.953em;
+	}
+	.recent-posts {
+		list-style: none;
+		padding: 0;
+		margin: 1.5rem 0;
+	}
+	li {
+		padding: 1.5rem 0;
+		border-top: 1px solid rgb(var(--gray-light));
+	}
+	h3 {
+		font-size: 1.563em;
+	}
+	p {
+		margin: 0.5rem 0 0;
+	}
+	.date {
+		color: rgb(var(--gray));
+		font-size: 0.9em;
+	}
+</style>
