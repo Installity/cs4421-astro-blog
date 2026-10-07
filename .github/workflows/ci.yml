@@ -12,7 +12,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Allow main deployments to finish; cancel superseded PR checks only.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate:
@@ -49,6 +50,9 @@ jobs:
       - name: Run all tests
         run: npm test
 
+      - name: Test ECS deployment logic
+        run: python3 -m unittest discover -s deployment -p 'test_*.py'
+
       - name: Build production site
         run: npm run build
 
@@ -65,6 +69,8 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      image_uri: ${{ steps.publish.outputs.image_uri }}
 
     permissions:
       contents: read
@@ -118,6 +124,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Tag and push tested image
+        id: publish
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
@@ -127,7 +134,47 @@ jobs:
           docker tag astro-blog:ci "$IMAGE_URI"
           docker push "$IMAGE_URI"
           echo "Published image: ${IMAGE_URI}" >> "$GITHUB_STEP_SUMMARY"
+          IMAGE_DIGEST=$(aws ecr batch-get-image --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_TAG" --query 'images[0].imageId.imageDigest' --output text)
+          [[ "$IMAGE_DIGEST" == sha256:* ]]
+          echo "image_uri=${ECR_REGISTRY}/${ECR_REPOSITORY}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Remove test container
         if: always()
         run: docker rm -f my-blog || true
+
+  deploy-ecs:
+    name: Deploy and verify ECS site
+    needs: container
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ECS_SERVICE_ARN: arn:aws:ecs:us-east-1:873716897321:service/default/astro-blog
+      NEWS_ALLOWED_ORIGINS: https://d2lpj15qx37gqq.cloudfront.net
+      ECS_APPLICATION_URL: https://as-2b62f684bea24081892fa30f44c134ca.ecs.us-east-1.on.aws
+      IMAGE_URI: ${{ needs.container.outputs.image_uri }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ECR_ROLE_ARN || 'arn:aws:iam::873716897321:role/GitHubActionsAstroECR' }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Update ECS and wait for healthy deployment
+        run: python3 deployment/deploy_ecs.py
+      - name: Verify application and news API
+        run: |
+          curl --fail --show-error --retry 3 "${ECS_APPLICATION_URL}/api/health"
+          curl --fail --show-error --retry 3 \
+            -D /tmp/news.headers \
+            -H "Origin: ${NEWS_ALLOWED_ORIGINS}" \
+            "${ECS_APPLICATION_URL}/api/news" -o /tmp/news.json
+          python3 -c 'import json; data=json.load(open("/tmp/news.json")); assert data["items"], "News API returned no headlines"'
+          python3 -c 'import os; headers=open("/tmp/news.headers").read().lower(); assert "access-control-allow-origin: " + os.environ["NEWS_ALLOWED_ORIGINS"].lower() in headers, "Missing CloudFront CORS header"'
+          echo "Deployed ${IMAGE_URI} to ${ECS_APPLICATION_URL}" >> "$GITHUB_STEP_SUMMARY"

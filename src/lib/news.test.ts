@@ -44,6 +44,10 @@ describe("feed normalisation", () => {
       publishedAt: "2026-10-07T12:00:00.000Z",
     });
   });
+  it("decodes publisher HTML entities while keeping titles plain text", async () => {
+    const xml = '<rss version="2.0"><channel><title>Test</title><item><title><![CDATA[ChatGPT&#8217;s &lsquo;UI&rsquo; &amp; &lt;b&gt;news&lt;/b&gt;]]></title><link>https://example.com/story</link></item></channel></rss>';
+    expect((await parseFeed(xml, NEWS_SOURCES[0]))[0].title).toBe("ChatGPT’s ‘UI’ & news");
+  });
   it("drops invalid links and blanks, normalises invalid dates and duplicate fragments", async () => {
     expect(
       await parseFeed(rss("javascript:alert(1)"), NEWS_SOURCES[0]),

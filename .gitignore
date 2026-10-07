@@ -3,6 +3,7 @@ dist/
 cdk.out/
 # generated types
 .astro/
+__pycache__/
 
 # dependencies
 node_modules/
