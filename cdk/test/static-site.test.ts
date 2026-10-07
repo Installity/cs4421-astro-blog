@@ -40,6 +40,19 @@ test('routes HTTPS requests to the private origin and invalidates on deployment'
   });
 });
 
+test('uses a separate managed log group without claiming the existing Lambda logs', () => {
+  template.resourceCountIs('AWS::Logs::LogGroup', 1);
+  const groups = template.findResources('AWS::Logs::LogGroup');
+  const [logGroupId, logGroup] = Object.entries(groups)[0];
+  expect(logGroup.Properties.LogGroupName).toBeUndefined();
+  expect(logGroup.Properties.RetentionInDays).toBe(30);
+  expect(logGroup.DeletionPolicy).toBe('Retain');
+  template.hasResourceProperties('AWS::Lambda::Function', {
+    LoggingConfig: { LogGroup: { Ref: logGroupId } },
+  });
+  expect(logGroupId).not.toMatch(/^CustomCDKBucketDeployment/);
+});
+
 test.each([
   ['/', '/index.html'],
   ['/blog/', '/blog/index.html'],
