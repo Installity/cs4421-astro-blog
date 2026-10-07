@@ -1,4 +1,5 @@
 import Parser from "rss-parser";
+import { decodeHTML } from "entities";
 
 export const NEWS_SOURCES = [
   { id: "techcrunch", name: "TechCrunch", url: "https://techcrunch.com/feed/" },
@@ -67,8 +68,8 @@ export async function parseFeed(
   const items: NewsItem[] = [];
   const seen = new Set<string>();
   for (const item of feed.items) {
-    const title = item.title
-      ?.replace(/<[^>]*>/g, "")
+    const title = decodeHTML(item.title ?? "")
+      .replace(/<[^>]*>/g, "")
       .replace(/\s+/g, " ")
       .trim();
     if (!title || !item.link) continue;
