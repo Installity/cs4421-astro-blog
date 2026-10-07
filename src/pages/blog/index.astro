@@ -70,6 +70,33 @@ const topics = [...new Set(posts.flatMap((post) => post.data.topics))].sort();
 				gap: 1rem;
 				margin-bottom: 2rem;
 			}
+			.search-form {
+				display: flex;
+				gap: 0.5rem;
+				margin-bottom: 2rem;
+			}
+			.search-form label {
+				font-weight: 700;
+			}
+			.search-form input {
+				flex: 1;
+				min-width: 0;
+				padding: 0.5rem;
+				font: inherit;
+				color: rgb(var(--black));
+				background: var(--surface);
+				border: 2px solid rgb(var(--gray-light));
+				border-radius: 4px;
+			}
+			.search-form button {
+				padding: 0.5rem 1rem;
+				font: inherit;
+				color: var(--surface);
+				background: rgb(var(--accent));
+				border: 0;
+				border-radius: 4px;
+				cursor: pointer;
+			}
 			.topic-filter label {
 				font-weight: 700;
 			}
@@ -83,6 +110,11 @@ const topics = [...new Set(posts.flatMap((post) => post.data.topics))].sort();
 				border-radius: 4px;
 			}
 			.topic-status {
+				margin: -1rem 0 1.5rem;
+				color: rgb(var(--gray));
+				font-size: 0.9em;
+			}
+			.search-status {
 				margin: -1rem 0 1.5rem;
 				color: rgb(var(--gray));
 				font-size: 0.9em;
@@ -116,6 +148,10 @@ const topics = [...new Set(posts.flatMap((post) => post.data.topics))].sort();
 					flex-direction: column;
 					gap: 0.5rem;
 				}
+				.search-form {
+					align-items: stretch;
+					flex-direction: column;
+				}
 				.topic-filter select {
 					width: 100%;
 				}
@@ -138,6 +174,12 @@ const topics = [...new Set(posts.flatMap((post) => post.data.topics))].sort();
 	<body>
 		<Header />
 		<main>
+			<form class="search-form" id="search-form" role="search">
+				<label for="search-input">Search posts</label>
+				<input id="search-input" name="q" type="search" placeholder="Search by keyword" />
+				<button type="submit">Search</button>
+			</form>
+			<p class="search-status" id="search-status" aria-live="polite" hidden>No results found</p>
 			<section class="topic-filter" aria-labelledby="topic-filter-label">
 				<label id="topic-filter-label" for="topic-select">Filter by topic</label>
 				<select id="topic-select">
@@ -149,10 +191,15 @@ const topics = [...new Set(posts.flatMap((post) => post.data.topics))].sort();
 				Showing <span id="post-count">{posts.length}</span> posts for <strong id="selected-topic">All topics</strong>
 			</p>
 			<section>
-				<ul>
+				<ul data-post-list>
 					{
-						posts.map((post) => (
-							<li data-topics={post.data.topics.join('|')}>
+						posts.map((post, index) => (
+							<li
+								data-topics={post.data.topics.join('|')}
+								data-title={post.data.title}
+								data-body={post.body ?? ''}
+								data-index={index}
+							>
 								<a href={`/blog/${post.id}/`}>
 									{post.data.heroImage && (
 										<Image width={720} height={360} src={post.data.heroImage} alt="" />
@@ -173,26 +220,84 @@ const topics = [...new Set(posts.flatMap((post) => post.data.topics))].sort();
 		</main>
 		<Footer />
 		<script>
+			type SearchablePost = {
+				element: HTMLElement;
+				title: string;
+				body: string;
+				topics: string[];
+				index: number;
+				score: number;
+			};
+
 			const topicSelect = document.querySelector<HTMLSelectElement>('#topic-select');
-			const postItems = document.querySelectorAll<HTMLElement>('[data-topics]');
+			const searchForm = document.querySelector<HTMLFormElement>('#search-form');
+			const searchInput = document.querySelector<HTMLInputElement>('#search-input');
+			const searchStatus = document.querySelector<HTMLElement>('#search-status');
 			const postCount = document.querySelector<HTMLElement>('#post-count');
 			const selectedTopic = document.querySelector<HTMLElement>('#selected-topic');
+			const postList = document.querySelector<HTMLUListElement>('[data-post-list]');
+			const postItems: SearchablePost[] = Array.from(
+				document.querySelectorAll<HTMLElement>('[data-topics]'),
+			).map((element) => ({
+				element,
+				title: element.dataset.title ?? '',
+				body: element.dataset.body ?? '',
+				topics: element.dataset.topics?.split('|') ?? [],
+				index: Number(element.dataset.index),
+				score: 0,
+			}));
 
-			topicSelect?.addEventListener('change', (event) => {
-				const selectedValue = (event.currentTarget as HTMLSelectElement).value;
+			const countOccurrences = (text: string, term: string) => {
+				let count = 0;
+				let start = 0;
+				while ((start = text.indexOf(term, start)) !== -1) {
+					count += 1;
+					start += term.length;
+				}
+				return count;
+			};
+
+			const updateResults = (query = '') => {
+				const terms = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
+				const selectedValue = topicSelect?.value ?? 'all';
 				let visiblePostCount = 0;
 
-				postItems.forEach((postItem) => {
-					const topics = postItem.dataset.topics?.split('|') ?? [];
-					const isVisible = selectedValue === 'all' || topics.includes(selectedValue);
-					postItem.hidden = !isVisible;
-					if (isVisible) visiblePostCount += 1;
+				postItems.forEach((post) => {
+					const title = post.title.toLocaleLowerCase();
+					const body = post.body.toLocaleLowerCase();
+					const matchesSearch = terms.every(
+						(term) => title.includes(term) || body.includes(term),
+					);
+					post.score = terms.reduce(
+						(score, term) =>
+							score + countOccurrences(title, term) * 10 + countOccurrences(body, term),
+						0,
+					);
+					const matchesTopic =
+						selectedValue === 'all' || post.topics.includes(selectedValue);
+					post.element.hidden = !matchesSearch || !matchesTopic;
+					if (!post.element.hidden) visiblePostCount += 1;
 				});
 
-				const selectedLabel = topicSelect.options[topicSelect.selectedIndex].text;
+				postItems.sort((a, b) => b.score - a.score || a.index - b.index);
+				postItems.forEach((post) => postList?.append(post.element));
+				if (searchStatus) searchStatus.hidden = terms.length === 0 || visiblePostCount > 0;
 				if (postCount) postCount.textContent = String(visiblePostCount);
-				if (selectedTopic) selectedTopic.textContent = selectedLabel;
+				if (selectedTopic) {
+					const selectedLabel = topicSelect?.options[topicSelect.selectedIndex]?.text;
+					selectedTopic.textContent =
+						terms.length > 0
+							? `Search results for "${query.trim()}"`
+							: selectedLabel ?? 'All topics';
+				}
+			};
+
+			searchForm?.addEventListener('submit', (event) => {
+				event.preventDefault();
+				updateResults(searchInput?.value);
 			});
+
+			topicSelect?.addEventListener('change', () => updateResults(searchInput?.value));
 		</script>
 	</body>
 </html>
