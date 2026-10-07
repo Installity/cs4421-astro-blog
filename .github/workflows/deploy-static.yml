@@ -19,6 +19,8 @@ jobs:
             - name: Install CDK Dependencies
               run: npm ci --prefix cdk
             - name: Build Astro Static Site
+              env:
+                PUBLIC_NEWS_API_URL: ${{ vars.PUBLIC_NEWS_API_URL || 'https://as-2b62f684bea24081892fa30f44c134ca.ecs.us-east-1.on.aws/api/news' }}
               run: npm run build
             - name: Configure AWS Credentials
               uses: aws-actions/configure-aws-credentials@v4
