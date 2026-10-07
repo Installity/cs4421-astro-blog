@@ -2,7 +2,12 @@
 import { getCollection, getEntry, render } from 'astro:content';
 import BlogPost from '../../layouts/BlogPost.astro';
 
-export const prerender = false;
+export async function getStaticPaths() {
+	const posts = await getCollection('blog');
+	return posts.map((post) => ({
+		params: { slug: post.id },
+	}));
+}
 
 const slug = Array.isArray(Astro.params.slug) ? Astro.params.slug.join('/') : Astro.params.slug;
 if (!slug) {
