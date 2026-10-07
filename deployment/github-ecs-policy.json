@@ -13,6 +13,13 @@
       "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-1"}}
     },
     {
+      "Sid": "RegisterOnlyAstroBlogTaskRevisions",
+      "Effect": "Allow",
+      "Action": "ecs:RegisterTaskDefinition",
+      "Resource": "arn:aws:ecs:us-east-1:873716897321:task-definition/default-astro-blog:*",
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-1"}}
+    },
+    {
       "Sid": "PassOnlyExistingTaskRole",
       "Effect": "Allow",
       "Action": "iam:PassRole",

@@ -19,8 +19,11 @@ even when the application deployment itself is healthy.
 
 `github-ecs-policy.json` is the supplemental inline policy on
 `GitHubActionsAstroECR` named `DeployAstroBlogService`. It grants inspection/update
-of this service and passing its existing task role only; the ECR publishing
-policy and main-branch OIDC trust remain in place. If restoring the role:
+of this service, registration of revisions within its `default-astro-blog` task
+family, and passing its existing task role only. Express service updates require
+the task registration permission even though the workflow calls only the Express
+update API. The ECR publishing policy and main-branch OIDC trust remain in place.
+If restoring the role:
 
 ```sh
 aws iam put-role-policy --role-name GitHubActionsAstroECR \
