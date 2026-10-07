@@ -1,18 +1,24 @@
 ---
-import { type CollectionEntry, getCollection, getEntry, render } from 'astro:content';
+import { getEntry, render } from 'astro:content';
 import BlogPost from '../../layouts/BlogPost.astro';
 
-export async function getStaticPaths() {
-	const posts = await getCollection('blog');
-	return posts.map((post) => ({
-		params: { slug: post.id },
-		props: post,
-	}));
-}
-type Props = CollectionEntry<'blog'>;
+export const prerender = false;
 
-const post = Astro.props;
+const slug = Array.isArray(Astro.params.slug) ? Astro.params.slug.join('/') : Astro.params.slug;
+if (!slug) {
+	throw new Error('A blog post slug is required');
+}
+
+const post = await getEntry('blog', slug);
+if (!post) {
+	throw new Error(`Blog post not found: ${slug}`);
+}
+
 const author = await getEntry(post.data.author);
+if (!author) {
+	throw new Error(`Author not found for blog post: ${slug}`);
+}
+
 const { Content } = await render(post);
 const wordCount = post.body?.trim().split(/\s+/).filter(Boolean).length ?? 0;
 const readingTime = Math.max(1, Math.ceil(wordCount / 200));
