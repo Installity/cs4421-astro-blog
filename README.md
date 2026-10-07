@@ -61,3 +61,41 @@ Check out [our documentation](https://docs.astro.build) or jump into our [Discor
 ## Credit
 
 This theme is based off of the lovely [Bear Blog](https://github.com/HermanMartinus/bearblog/).
+
+## Container builds and publishing
+
+The default `npm run build` creates the static site used by the CDK deployment.
+The Dockerfile sets `ASTRO_OUTPUT=server` during its build to produce an Astro
+Node server with a live `/api/health` endpoint.
+
+With OrbStack running, build and test the container locally:
+
+```sh
+docker build --platform linux/amd64 -t astro-blog:local .
+docker run -d --platform linux/amd64 --name astro-blog-local \
+  -p 4321:4321 -e NODE_ENV=production astro-blog:local
+curl --fail http://localhost:4321/api/health
+docker inspect astro-blog-local --format '{{.State.Health.Status}}'
+```
+
+Stop any development server using port 4321 before starting the container.
+Health initially reports `starting`; allow about 30 seconds for the first probe.
+Use `docker stop astro-blog-local` and `docker rm astro-blog-local` before
+creating a new container from a rebuilt image.
+
+The Continuous Integration workflow runs the existing project checks, then
+builds a Linux AMD64 image and verifies its Docker health check on pull requests.
+After a push or merge to `main`, it also publishes the tested image to the
+`astro-blog` ECR repository in `us-east-1`. The workflow summary records its URI.
+Publishing uses the `GitHubActionsAstroECR` IAM role via OIDC, without permanent
+AWS access keys. The role trusts only this repository's `main` branch.
+
+The workflow includes defaults for this project's AWS region and publishing role.
+Optional repository Actions variables `AWS_REGION` and `AWS_ECR_ROLE_ARN` can
+override them; update the role's ECR permissions when changing the destination.
+Image tags include the commit SHA, run ID, and attempt, so each run has a unique
+tag compatible with the repository's immutable tags. `v1.0.0` remains the lab
+release tag. Manual workflow runs validate the image without publishing it.
+
+Publishing an image does not deploy a running container. The existing static CDK
+deployment remains a separate workflow.
