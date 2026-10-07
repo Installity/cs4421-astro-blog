@@ -1,18 +1,25 @@
-import { test, expect } from '@playwright/test';
-
-test('has title', async ({ page }) => {
-  await page.goto('https://playwright.dev/');
-
-  // Expect a title "to contain" a substring.
-  await expect(page).toHaveTitle(/Playwright/);
+import { test, expect } from "@playwright/test";
+test("personal articles are the only RSS entries", async ({ request }) => {
+  const response = await request.get("/rss.xml");
+  const xml = await response.text();
+  expect(response.ok()).toBe(true);
+  expect(xml.match(/<item>/g)).toHaveLength(2);
+  expect(xml).toContain("/blog/velsat-software/");
+  expect(xml).toContain("/blog/exglass-software/");
+  expect(xml).not.toContain("using-mdx");
 });
-
-test('get started link', async ({ page }) => {
-  await page.goto('https://playwright.dev/');
-
-  // Click the get started link.
-  await page.getByRole('link', { name: 'Get started' }).click();
-
-  // Expects page to have a heading with the name of Installation.
-  await expect(page.getByRole('heading', { name: 'Installation' })).toBeVisible();
+test("navigation reaches About and News", async ({ page }) => {
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: "About", exact: true })
+    .click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Hi, I'm Andrei.",
+  );
+  await page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: "Tech News", exact: true })
+    .click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Tech News");
 });

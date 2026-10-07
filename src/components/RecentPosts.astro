@@ -1,56 +1,47 @@
 ---
-import type { CollectionEntry } from 'astro:content';
-import FormattedDate from './FormattedDate.astro';
-
+import type { CollectionEntry } from "astro:content";
+import FormattedDate from "./FormattedDate.astro";
 interface Props {
-	posts: Pick<CollectionEntry<'blog'>, 'id' | 'data'>[];
+  posts: Pick<CollectionEntry<"blog">, "id" | "data">[];
 }
-
 const recentPosts = [...Astro.props.posts]
-	.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
-	.slice(0, 3);
+  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
+  .slice(0, 3);
 ---
 
 <section aria-labelledby="recent-posts-heading">
-	<h2 id="recent-posts-heading">Recent posts</h2>
-	<ul class="recent-posts">
-		{recentPosts.map((post) => (
-			<li>
-				<article>
-					<h3><a href={`/blog/${post.id}/`}>{post.data.title}</a></h3>
-					<p class="date"><FormattedDate date={post.data.pubDate} /></p>
-					<p>{post.data.description}</p>
-				</article>
-			</li>
-		))}
-	</ul>
-	<a href="/blog/">View all posts</a>
+  <div class="section-heading">
+    <h2 id="recent-posts-heading">Recent posts</h2>
+    <a href="/blog/">View all posts ↗</a>
+  </div>
+  <ul class="post-list">
+    {recentPosts.map((post) => (
+      <li>
+        <article class="post-row">
+          {post.data.heroImage && (
+            <img
+              src={post.data.heroImage.src}
+              alt=""
+              width="180"
+              height="120"
+            />
+          )}
+          <div>
+            <h3>
+              <a href={`/blog/${post.id}/`}>{post.data.title}</a>
+            </h3>
+            <div class="meta">
+              <FormattedDate date={post.data.pubDate} />
+            </div>
+            <p>{post.data.description}</p>
+            <ul class="topics" aria-label="Topics">
+              {post.data.topics.map((topic) => (
+                <li>{topic}</li>
+              ))}
+            </ul>
+          </div>
+        </article>
+      </li>
+    ))}
+  </ul>
 </section>
-
-<style>
-	section {
-		margin: 2rem 0 3rem;
-	}
-	h2 {
-		font-size: 1.953em;
-	}
-	.recent-posts {
-		list-style: none;
-		padding: 0;
-		margin: 1.5rem 0;
-	}
-	li {
-		padding: 1.5rem 0;
-		border-top: 1px solid rgb(var(--gray-light));
-	}
-	h3 {
-		font-size: 1.563em;
-	}
-	p {
-		margin: 0.5rem 0 0;
-	}
-	.date {
-		color: rgb(var(--gray));
-		font-size: 0.9em;
-	}
-</style>

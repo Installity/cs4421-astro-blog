@@ -1,303 +1,174 @@
 ---
-import { Image } from 'astro:assets';
-import { getCollection } from 'astro:content';
-import BaseHead from '../../components/BaseHead.astro';
-import Footer from '../../components/Footer.astro';
-import FormattedDate from '../../components/FormattedDate.astro';
-import Header from '../../components/Header.astro';
-import { SITE_DESCRIPTION, SITE_TITLE } from '../../consts';
-
-const posts = (await getCollection('blog')).sort(
-	(a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
+import { getCollection } from "astro:content";
+import SiteLayout from "../../layouts/SiteLayout.astro";
+import FormattedDate from "../../components/FormattedDate.astro";
+const posts = (await getCollection("blog")).sort(
+  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
 );
 const topics = [...new Set(posts.flatMap((post) => post.data.topics))].sort();
 ---
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
-		<style>
-			main {
-				width: 960px;
-			}
-			ul {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 2rem;
-				list-style-type: none;
-				margin: 0;
-				padding: 0;
-			}
-			ul li {
-				width: calc(50% - 1rem);
-			}
-			ul li * {
-				text-decoration: none;
-				transition: 0.2s ease;
-			}
-			ul li:first-child {
-				width: 100%;
-				margin-bottom: 1rem;
-				text-align: center;
-			}
-			ul li:first-child img {
-				width: 100%;
-			}
-			ul li:first-child .title {
-				font-size: 2.369rem;
-			}
-			ul li img {
-				margin-bottom: 0.5rem;
-				border-radius: 12px;
-			}
-			ul li a {
-				display: block;
-			}
-			.title {
-				margin: 0;
-				color: rgb(var(--black));
-				line-height: 1;
-			}
-			.date {
-				margin: 0;
-				color: rgb(var(--gray));
-			}
-			.topic-filter {
-				display: flex;
-				align-items: baseline;
-				justify-content: space-between;
-				gap: 1rem;
-				margin-bottom: 2rem;
-			}
-			.search-form {
-				display: flex;
-				gap: 0.5rem;
-				margin-bottom: 2rem;
-			}
-			.search-form label {
-				font-weight: 700;
-			}
-			.search-form input {
-				flex: 1;
-				min-width: 0;
-				padding: 0.5rem;
-				font: inherit;
-				color: rgb(var(--black));
-				background: var(--surface);
-				border: 2px solid rgb(var(--gray-light));
-				border-radius: 4px;
-			}
-			.search-form button {
-				padding: 0.5rem 1rem;
-				font: inherit;
-				color: var(--surface);
-				background: rgb(var(--accent));
-				border: 0;
-				border-radius: 4px;
-				cursor: pointer;
-			}
-			.topic-filter label {
-				font-weight: 700;
-			}
-			.topic-filter select {
-				min-width: 12rem;
-				padding: 0.5rem;
-				font: inherit;
-				color: rgb(var(--black));
-				background: var(--surface);
-				border: 2px solid rgb(var(--gray-light));
-				border-radius: 4px;
-			}
-			.topic-status {
-				margin: -1rem 0 1.5rem;
-				color: rgb(var(--gray));
-				font-size: 0.9em;
-			}
-			.search-status {
-				margin: -1rem 0 1.5rem;
-				color: rgb(var(--gray));
-				font-size: 0.9em;
-			}
-			.topic-tags {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 0.35rem;
-				margin: 0.5rem 0 0;
-				padding: 0;
-				list-style: none;
-				font-size: 0.75em;
-			}
-			.topic-tags li {
-				width: auto;
-				padding: 0.1rem 0.5rem;
-				color: rgb(var(--gray-dark));
-				background: rgb(var(--gray-light));
-				border-radius: 999px;
-			}
-			ul li a:hover h4,
-			ul li a:hover .date {
-				color: rgb(var(--accent));
-			}
-			ul a:hover img {
-				box-shadow: var(--box-shadow);
-			}
-			@media (max-width: 720px) {
-				.topic-filter {
-					align-items: stretch;
-					flex-direction: column;
-					gap: 0.5rem;
-				}
-				.search-form {
-					align-items: stretch;
-					flex-direction: column;
-				}
-				.topic-filter select {
-					width: 100%;
-				}
-				ul {
-					gap: 0.5em;
-				}
-				ul li {
-					width: 100%;
-					text-align: center;
-				}
-				ul li:first-child {
-					margin-bottom: 0;
-				}
-				ul li:first-child .title {
-					font-size: 1.563em;
-				}
-			}
-		</style>
-	</head>
-	<body>
-		<Header />
-		<main>
-			<form class="search-form" id="search-form" role="search">
-				<label for="search-input">Search posts</label>
-				<input id="search-input" name="q" type="search" placeholder="Search by keyword" />
-				<button type="submit">Search</button>
-			</form>
-			<p class="search-status" id="search-status" aria-live="polite" hidden>No results found</p>
-			<section class="topic-filter" aria-labelledby="topic-filter-label">
-				<label id="topic-filter-label" for="topic-select">Filter by topic</label>
-				<select id="topic-select">
-					<option value="all">All topics</option>
-					{topics.map((topic) => <option value={topic}>{topic}</option>)}
-				</select>
-			</section>
-			<p class="topic-status" aria-live="polite">
-				Showing <span id="post-count">{posts.length}</span> posts for <strong id="selected-topic">All topics</strong>
-			</p>
-			<section>
-				<ul data-post-list>
-					{
-						posts.map((post, index) => (
-							<li
-								data-topics={post.data.topics.join('|')}
-								data-title={post.data.title}
-								data-body={post.body ?? ''}
-								data-index={index}
-							>
-								<a href={`/blog/${post.id}/`}>
-									{post.data.heroImage && (
-										<Image width={720} height={360} src={post.data.heroImage} alt="" />
-									)}
-									<h4 class="title">{post.data.title}</h4>
-									<p class="date">
-										<FormattedDate date={post.data.pubDate} />
-									</p>
-									<ul class="topic-tags" aria-label="Topics">
-										{post.data.topics.map((topic) => <li>{topic}</li>)}
-									</ul>
-								</a>
-							</li>
-						))
-					}
-				</ul>
-			</section>
-		</main>
-		<Footer />
-		<script>
-			type SearchablePost = {
-				element: HTMLElement;
-				title: string;
-				body: string;
-				topics: string[];
-				index: number;
-				score: number;
-			};
+<SiteLayout
+  title="Blog — Andrei Turcan"
+  description="Personal software stories from Velsat and ExGlass."
+>
+  <div class="intro">
+    <p class="eyebrow">Projects & lessons</p>
+    <h1>From idea to implementation.</h1>
+    <p>
+      The software behind things I've built, and what each project taught me.
+    </p>
+  </div>
+  <div class="filters">
+    <form id="search-form" role="search">
+      <label for="search-input">Search posts</label>
+      <input id="search-input" type="search" placeholder="Search by keyword" />
+      <button type="submit">Search</button>
+    </form>
+    <div>
+      <label for="topic-select">Filter by topic</label>
+      <select id="topic-select">
+        <option value="all">All topics</option>
+        {topics.map((topic) => (
+          <option value={topic}>{topic}</option>
+        ))}
+      </select>
+    </div>
+  </div>
+  <p class="meta" aria-live="polite">
+    Showing <span id="post-count">{posts.length}</span> posts for{" "}
+    <strong id="selected-topic">All topics</strong>
+  </p>
+  <p id="search-status" role="status" hidden>
+    No results found
+  </p>
+  <ul class="post-list" data-post-list>
+    {posts.map((post, index) => (
+      <li
+        data-topics={post.data.topics.join("|")}
+        data-title={post.data.title}
+        data-body={post.body ?? ""}
+        data-index={index}
+      >
+        <article class="post-row">
+          {post.data.heroImage && (
+            <img
+              src={post.data.heroImage.src}
+              alt=""
+              width="180"
+              height="120"
+            />
+          )}
+          <div>
+            <h3 class="title">
+              <a href={`/blog/${post.id}/`}>{post.data.title}</a>
+            </h3>
+            <div class="meta">
+              <FormattedDate date={post.data.pubDate} />
+            </div>
+            <p>{post.data.description}</p>
+            <ul class="topics" aria-label="Topics">
+              {post.data.topics.map((topic) => (
+                <li>{topic}</li>
+              ))}
+            </ul>
+          </div>
+        </article>
+      </li>
+    ))}
+  </ul>
+  <script>
+    type SearchablePost = {
+      element: HTMLElement;
+      title: string;
+      body: string;
+      topics: string[];
+      index: number;
+      score: number;
+    };
 
-			const topicSelect = document.querySelector<HTMLSelectElement>('#topic-select');
-			const searchForm = document.querySelector<HTMLFormElement>('#search-form');
-			const searchInput = document.querySelector<HTMLInputElement>('#search-input');
-			const searchStatus = document.querySelector<HTMLElement>('#search-status');
-			const postCount = document.querySelector<HTMLElement>('#post-count');
-			const selectedTopic = document.querySelector<HTMLElement>('#selected-topic');
-			const postList = document.querySelector<HTMLUListElement>('[data-post-list]');
-			const postItems: SearchablePost[] = Array.from(
-				document.querySelectorAll<HTMLElement>('[data-topics]'),
-			).map((element) => ({
-				element,
-				title: element.dataset.title ?? '',
-				body: element.dataset.body ?? '',
-				topics: element.dataset.topics?.split('|') ?? [],
-				index: Number(element.dataset.index),
-				score: 0,
-			}));
+    const topicSelect =
+      document.querySelector<HTMLSelectElement>("#topic-select");
+    const searchForm = document.querySelector<HTMLFormElement>("#search-form");
+    const searchInput =
+      document.querySelector<HTMLInputElement>("#search-input");
+    const searchStatus = document.querySelector<HTMLElement>("#search-status");
+    const postCount = document.querySelector<HTMLElement>("#post-count");
+    const selectedTopic =
+      document.querySelector<HTMLElement>("#selected-topic");
+    const postList =
+      document.querySelector<HTMLUListElement>("[data-post-list]");
+    const postItems: SearchablePost[] = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-topics]"),
+    ).map((element) => ({
+      element,
+      title: element.dataset.title ?? "",
+      body: element.dataset.body ?? "",
+      topics: element.dataset.topics?.split("|") ?? [],
+      index: Number(element.dataset.index),
+      score: 0,
+    }));
 
-			const countOccurrences = (text: string, term: string) => {
-				let count = 0;
-				let start = 0;
-				while ((start = text.indexOf(term, start)) !== -1) {
-					count += 1;
-					start += term.length;
-				}
-				return count;
-			};
+    const countOccurrences = (text: string, term: string) => {
+      let count = 0;
+      let start = 0;
+      while ((start = text.indexOf(term, start)) !== -1) {
+        count += 1;
+        start += term.length;
+      }
+      return count;
+    };
 
-			const updateResults = (query = '') => {
-				const terms = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
-				const selectedValue = topicSelect?.value ?? 'all';
-				let visiblePostCount = 0;
+    const updateResults = (query = "") => {
+      const terms = query
+        .toLocaleLowerCase()
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      const selectedValue = topicSelect?.value ?? "all";
+      let visiblePostCount = 0;
 
-				postItems.forEach((post) => {
-					const title = post.title.toLocaleLowerCase();
-					const body = post.body.toLocaleLowerCase();
-					const matchesSearch = terms.every(
-						(term) => title.includes(term) || body.includes(term),
-					);
-					post.score = terms.reduce(
-						(score, term) =>
-							score + countOccurrences(title, term) * 10 + countOccurrences(body, term),
-						0,
-					);
-					const matchesTopic =
-						selectedValue === 'all' || post.topics.includes(selectedValue);
-					post.element.hidden = !matchesSearch || !matchesTopic;
-					if (!post.element.hidden) visiblePostCount += 1;
-				});
+      postItems.forEach((post) => {
+        const title = post.title.toLocaleLowerCase();
+        const body = post.body.toLocaleLowerCase();
+        const matchesSearch = terms.every(
+          (term) => title.includes(term) || body.includes(term),
+        );
+        post.score = terms.reduce(
+          (score, term) =>
+            score +
+            countOccurrences(title, term) * 10 +
+            countOccurrences(body, term),
+          0,
+        );
+        const matchesTopic =
+          selectedValue === "all" || post.topics.includes(selectedValue);
+        post.element.hidden = !matchesSearch || !matchesTopic;
+        if (!post.element.hidden) visiblePostCount += 1;
+      });
 
-				postItems.sort((a, b) => b.score - a.score || a.index - b.index);
-				postItems.forEach((post) => postList?.append(post.element));
-				if (searchStatus) searchStatus.hidden = terms.length === 0 || visiblePostCount > 0;
-				if (postCount) postCount.textContent = String(visiblePostCount);
-				if (selectedTopic) {
-					const selectedLabel = topicSelect?.options[topicSelect.selectedIndex]?.text;
-					selectedTopic.textContent =
-						terms.length > 0
-							? `Search results for "${query.trim()}"`
-							: selectedLabel ?? 'All topics';
-				}
-			};
+      postItems.sort((a, b) => b.score - a.score || a.index - b.index);
+      postItems.forEach((post) => postList?.append(post.element));
+      if (searchStatus)
+        searchStatus.hidden = terms.length === 0 || visiblePostCount > 0;
+      if (postCount) postCount.textContent = String(visiblePostCount);
+      if (selectedTopic) {
+        const selectedLabel =
+          topicSelect?.options[topicSelect.selectedIndex]?.text;
+        selectedTopic.textContent =
+          terms.length > 0
+            ? `Search results for "${query.trim()}"`
+            : (selectedLabel ?? "All topics");
+      }
+    };
 
-			searchForm?.addEventListener('submit', (event) => {
-				event.preventDefault();
-				updateResults(searchInput?.value);
-			});
+    searchForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      updateResults(searchInput?.value);
+    });
 
-			topicSelect?.addEventListener('change', () => updateResults(searchInput?.value));
-		</script>
-	</body>
-</html>
+    topicSelect?.addEventListener("change", () =>
+      updateResults(searchInput?.value),
+    );
+  </script>
+</SiteLayout>

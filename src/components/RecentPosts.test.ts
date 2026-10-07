@@ -33,7 +33,7 @@ describe('recent posts', () => {
 			expect(html).toContain(`datetime="${entry.data.pubDate.toISOString()}"`);
 		}
 		expect(html).toContain('Jan 15, 2025');
-		expect(html).toMatch(/<a href="\/blog\/"[^>]*>View all posts<\/a>/);
+		expect(html).toMatch(/<a href="\/blog\/"[^>]*>View all posts ↗<\/a>/);
 	});
 
 	it.each([0, 1, 2, 3])('renders %i available posts without placeholders', async (count) => {

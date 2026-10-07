@@ -1,0 +1,138 @@
+<div class="waves" aria-hidden="true">
+  <div class="wave-fallback"></div>
+  <canvas data-wave-canvas></canvas>
+</div>
+
+<script>
+  const canvas =
+    document.querySelector<HTMLCanvasElement>("[data-wave-canvas]");
+  const control = document.querySelector<HTMLButtonElement>(
+    "[data-motion-toggle]",
+  );
+  const context = canvas?.getContext("2d");
+  if (canvas && control && context) {
+    control.hidden = false;
+    const motion = matchMedia("(prefers-reduced-motion: reduce)");
+    let paused = false;
+    try {
+      paused = localStorage.getItem("waves-paused") === "true";
+    } catch {
+      /* Page controls work without storage. */
+    }
+    let width = 0,
+      height = 0,
+      phase = 0,
+      frame = 0,
+      last = 0;
+    function draw() {
+      if (!context) return;
+      context.clearRect(0, 0, width, height);
+      const color = getComputedStyle(document.documentElement)
+        .getPropertyValue("--wave")
+        .trim();
+      context.fillStyle = color;
+      context.globalAlpha =
+        document.documentElement.dataset.theme === "dark" ? 0.45 : 0.25;
+      const paths = width < 600 ? 12 : 22;
+      const spacing = width < 600 ? 14 : 10;
+      for (let ribbon = 0; ribbon < 3; ribbon++) {
+        context.beginPath();
+        for (let path = 0; path < paths; path++) {
+          for (let x = -10; x < width + 10; x += spacing) {
+            const angle = (x / width) * Math.PI * 2 + phase + ribbon * 1.8;
+            const y =
+              height * (0.13 + ribbon * 0.37) +
+              Math.sin(angle) * Math.min(100, width * 0.15) +
+              Math.sin(angle * 0.65 - phase * 0.3) * 45 +
+              (path - paths / 2) * 8;
+            context.moveTo(x + 1, y);
+            context.arc(x, y, 1, 0, Math.PI * 2);
+          }
+        }
+        context.fill();
+      }
+    }
+    function tick(now: number) {
+      if (paused || motion.matches || document.hidden) return;
+      if (!last) last = now;
+      if (now - last >= 1000 / 30) {
+        phase += (Math.min(now - last, 100) / 1000) * 0.095;
+        last = now;
+        draw();
+      }
+      frame = requestAnimationFrame(tick);
+    }
+    function update() {
+      cancelAnimationFrame(frame);
+      last = 0;
+      if (!control || !canvas) return;
+      const stopped = paused || motion.matches;
+      control.setAttribute(
+        "aria-label",
+        motion.matches
+          ? "Background motion reduced"
+          : paused
+            ? "Resume background"
+            : "Pause background",
+      );
+      control.title = control.getAttribute("aria-label") ?? "";
+      control.disabled = motion.matches;
+      control.setAttribute("aria-pressed", String(stopped));
+      canvas.dataset.motion = stopped ? "paused" : "running";
+      draw();
+      if (!stopped && !document.hidden) frame = requestAnimationFrame(tick);
+    }
+    function resize() {
+      if (!canvas || !context) return;
+      width = innerWidth;
+      height = innerHeight;
+      const ratio = Math.min(devicePixelRatio || 1, 1.5);
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      draw();
+    }
+    control.addEventListener("click", () => {
+      paused = !paused;
+      try {
+        localStorage.setItem("waves-paused", String(paused));
+      } catch {
+        /* Optional persistence. */
+      }
+      update();
+    });
+    window.addEventListener("resize", resize);
+    document.addEventListener("visibilitychange", update);
+    motion.addEventListener("change", update);
+    new MutationObserver(draw).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    resize();
+    canvas.dataset.ready = "true";
+    update();
+  } else if (control) control.hidden = true;
+</script>
+<style>
+  .waves {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .waves canvas,
+  .wave-fallback {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .wave-fallback {
+    background: url("/wave-fallback.svg") center/cover;
+    opacity: 0.2;
+  }
+  .waves:has(canvas[data-ready="true"]) .wave-fallback {
+    display: none;
+  }
+</style>
