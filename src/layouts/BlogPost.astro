@@ -1,100 +1,63 @@
 ---
-import { Image } from 'astro:assets';
-import type { CollectionEntry } from 'astro:content';
-import BaseHead from '../components/BaseHead.astro';
-import AuthorBio from '../components/AuthorBio.astro';
-import Footer from '../components/Footer.astro';
-import FormattedDate from '../components/FormattedDate.astro';
-import Header from '../components/Header.astro';
-import RelatedArticles from '../components/RelatedArticles.astro';
-
-type Props = Omit<CollectionEntry<'blog'>['data'], 'author' | 'topics'> & {
-	author?: CollectionEntry<'authors'>['data'];
-	readingTime: number;
-	currentPost?: Pick<CollectionEntry<'blog'>, 'id' | 'data'>;
-	posts?: Pick<CollectionEntry<'blog'>, 'id' | 'data'>[];
+import type { CollectionEntry } from "astro:content";
+import SiteLayout from "./SiteLayout.astro";
+import AuthorBio from "../components/AuthorBio.astro";
+import FormattedDate from "../components/FormattedDate.astro";
+import RelatedArticles from "../components/RelatedArticles.astro";
+type Props = Omit<CollectionEntry<"blog">["data"], "author" | "topics"> & {
+  author?: CollectionEntry<"authors">["data"];
+  readingTime: number;
+  currentPost?: Pick<CollectionEntry<"blog">, "id" | "data">;
+  posts?: Pick<CollectionEntry<"blog">, "id" | "data">[];
 };
-
-const { title, description, pubDate, updatedDate, heroImage, author, readingTime, currentPost, posts } = Astro.props;
+const {
+  title,
+  description,
+  pubDate,
+  updatedDate,
+  heroImage,
+  author,
+  readingTime,
+  currentPost,
+  posts,
+} = Astro.props;
 ---
 
-<html lang="en">
-	<head>
-		<BaseHead title={title} description={description} />
-		<style>
-			main {
-				width: calc(100% - 2em);
-				max-width: 100%;
-				margin: 0;
-			}
-			.hero-image {
-				width: 100%;
-			}
-			.hero-image img {
-				display: block;
-				margin: 0 auto;
-				border-radius: 12px;
-				box-shadow: var(--box-shadow);
-			}
-			.prose {
-				width: 720px;
-				max-width: calc(100% - 2em);
-				margin: auto;
-				padding: 1em;
-				color: rgb(var(--gray-dark));
-			}
-			.title {
-				margin-bottom: 1em;
-				padding: 1em 0;
-				text-align: center;
-				line-height: 1;
-			}
-			.title h1 {
-				margin: 0 0 0.5em 0;
-			}
-			.date {
-				margin-bottom: 0.5em;
-				color: rgb(var(--gray));
-			}
-			.reading-time {
-				margin: 0.5em 0;
-				color: rgb(var(--gray));
-			}
-			.last-updated-on {
-				font-style: italic;
-			}
-		</style>
-	</head>
-
-	<body>
-		<Header />
-		<main>
-			<article>
-				<div class="hero-image">
-					{heroImage && <Image width={1020} height={510} src={heroImage} alt="" />}
-				</div>
-				<div class="prose">
-					<div class="title">
-						<div class="date">
-							<FormattedDate date={pubDate} />
-							{
-								updatedDate && (
-									<div class="last-updated-on">
-										Last updated on <FormattedDate date={updatedDate} />
-									</div>
-								)
-							}
-						</div>
-						<h1>{title}</h1>
-						<p class="reading-time">{readingTime} min read</p>
-						<hr />
-					</div>
-					<slot />
-					{author && <AuthorBio {...author} />}
-					{currentPost && posts && <RelatedArticles {currentPost} {posts} />}
-				</div>
-			</article>
-		</main>
-		<Footer />
-	</body>
-</html>
+<SiteLayout {title} {description}>
+  <article>
+    <header class="article-title">
+      <a href="/blog/" class="meta">
+        ← All posts
+      </a>
+      <h1>{title}</h1>
+      <p>{description}</p>
+      <div class="meta">
+        <FormattedDate date={pubDate} /> · {readingTime} min read
+        {updatedDate && (
+          <>
+            {" "}
+            · Updated <FormattedDate date={updatedDate} />
+          </>
+        )}
+      </div>
+      {heroImage && (
+        <img
+          class="article-diagram"
+          src={heroImage.src}
+          width="680"
+          height="260"
+          alt={
+            title.startsWith("Velsat")
+              ? "Sensor readings flow through Arduino firmware and radio telemetry to a team ground station."
+              : "Camera frames stream over Wi-Fi to laptop processing, which sends alerts to an onboard board."
+          }
+        />
+      )}
+    </header>
+    <div class="prose">
+      <slot />
+      {author && <AuthorBio {...author} />}{" "}
+      {currentPost && posts && <RelatedArticles {currentPost} {posts} />}
+    </div>
+  </article>
+</SiteLayout>

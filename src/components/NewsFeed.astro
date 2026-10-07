@@ -1,0 +1,81 @@
+---
+import { NEWS_SOURCES } from "../lib/news";
+interface Props {
+  preview?: boolean;
+}
+const { preview = false } = Astro.props;
+const runtime =
+  import.meta.env.DEV || import.meta.env.ASTRO_OUTPUT === "server";
+const configured = import.meta.env.PUBLIC_NEWS_API_URL ?? "";
+let endpoint = runtime ? "/api/news" : "";
+if (!runtime && configured) {
+  try {
+    const url = new URL(configured);
+    if (url.protocol === "https:" && !url.username && !url.password)
+      endpoint = url.href;
+  } catch {
+    /* Configuration is explained in the unavailable state. */
+  }
+}
+---
+
+<section
+  class="news-section"
+  aria-labelledby="news-heading"
+  data-news-feed
+  data-endpoint={endpoint}
+  data-limit={preview ? 6 : 60}
+>
+  <div class="section-heading">
+    <h2 id="news-heading">
+      {preview ? "Latest tech news" : "From the publishers"}
+    </h2>
+    {preview && <a href="/news/">All tech news ↗</a>}
+  </div>
+  <p class="news-note">
+    Headlines from independent publishers. Read each story on its original site.
+  </p>
+  <div class="news-controls">
+    {!preview && (
+      <>
+        <label for="news-publisher">Publisher</label>
+        <select id="news-publisher" data-news-filter>
+          <option value="all">All publishers</option>
+          {NEWS_SOURCES.map((s) => (
+            <option value={s.id}>{s.name}</option>
+          ))}
+        </select>
+      </>
+    )}
+    <button type="button" data-news-retry hidden>
+      Refresh news
+    </button>
+  </div>
+  <p class="news-status" data-news-status role="status">
+    {endpoint
+      ? "Loading the latest headlines…"
+      : "Live news is unavailable on this version of the site. A news API URL has not been configured."}
+  </p>
+  <ul class="news-list" data-news-list></ul>
+  <p class="meta" data-news-checked></p>
+  <details class="source-status" data-news-sources hidden>
+    <summary>Publisher availability</summary>
+    <ul></ul>
+  </details>
+  <noscript>
+    <p class="news-note">
+      Enable JavaScript to load current headlines, or visit a publisher
+      directly.
+    </p>
+    <ul>
+      {NEWS_SOURCES.map((s) => (
+        <li>
+          <a href={new URL(s.url).origin}>{s.name}</a>
+        </li>
+      ))}
+    </ul>
+  </noscript>
+</section>
+<script>
+  import "../scripts/news-client";
+</script>
