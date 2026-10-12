@@ -64,6 +64,19 @@ body {
     sans-serif;
   overflow-wrap: break-word;
 }
+/* Native theme snapshots reveal from the control without a second crossfade. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2; }
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-theme-reveal]) :is(body, .site-panel, button, input, select, h1, h2, h3, h4, a, p, nav, footer, li, img, blockquote, .prose, .meta, .topics, .eyebrow) {
+    transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+  }
+}
 a {
   color: var(--accent);
   text-underline-offset: 4px;
