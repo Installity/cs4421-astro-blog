@@ -1,5 +1,6 @@
 ---
 import BaseHead from "../components/BaseHead.astro";
+import { ClientRouter, fade } from "astro:transitions";
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
 import WaveBackground from "../components/WaveBackground.astro";
@@ -12,9 +13,10 @@ const { title = SITE_TITLE, description = SITE_DESCRIPTION } = Astro.props;
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en" transition:name="root" transition:animate="none">
   <head>
     <BaseHead {title} {description} />
+    <ClientRouter />
   </head>
   <body>
     <a class="skip-link" href="#main">
@@ -23,10 +25,19 @@ const { title = SITE_TITLE, description = SITE_DESCRIPTION } = Astro.props;
     <WaveBackground />
     <div class="site-panel">
       <Header />
-      <main id="main">
+      <main id="main" transition:name="page-content" transition:animate={fade({ duration: "180ms" })}>
         <slot />
       </main>
       <Footer />
     </div>
   </body>
 </html>
+
+<script>
+  // Carry the current theme into the next document before it is painted,
+  // including when localStorage is unavailable.
+  document.addEventListener("astro:before-swap", (event) => {
+    event.newDocument.documentElement.dataset.theme =
+      document.documentElement.dataset.theme;
+  });
+</script>
