@@ -124,6 +124,9 @@ for (const theme of ["light", "dark"] as const) {
     });
     await page.locator("[data-theme-toggle]").click();
     await expect.poll(() => page.evaluate(() => (window as Window & { heldReveal?: Animation }).heldReveal?.playState)).toBe("paused");
+    // Astro's navigation styles hide the old root by default. A circular theme
+    // reveal must keep it visible beneath the clipped new snapshot.
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement, "::view-transition-old(root)").opacity)).toBe("1");
     const frozen = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
     expect(frozen).not.toBe(originalPalette);
     const afterFrames = await canvas.evaluate(async (node) => {
