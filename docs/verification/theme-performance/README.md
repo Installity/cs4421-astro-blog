@@ -14,7 +14,7 @@ Six alternating transitions on `/about/`, headless Chromium, 1440 × 1000, 4× C
 | --- | --- | --- |
 | Wave redraws while reveal marker is active | 12–14 per reveal | 2 per reveal |
 | Sampled animation-frame intervals, median / p95 | 16.7 / 16.8 ms | 16.7 / 16.7–16.8 ms |
-| Sampled intervals per reveal | 29 | 37–39 |
+| Sampled intervals per reveal | 29 | 37–38 |
 
 Raw results: [before.json](before.json), [after.json](after.json). These measurements demonstrate reduced drawing work and longer animation pacing; they do **not** establish a higher display refresh rate or guarantee frame rates on physical devices. The browser already drives the native animation at its display cadence. Clip-path rasterization remains browser-dependent.
 
@@ -32,10 +32,10 @@ Set `TEST_BASE_URL` when using another local port. Use the same viewport, browse
 
 - Given running waves, when either theme reveal is held, the bitmap stays still in the new palette; after completion it changes again. The new regression **fails against the old wave loop** and passes with the fix.
 - Given a saved manual pause, when the theme changes, the background stays paused and storage remains unchanged.
-- Given rapid clicks, a skipped native snapshot, or a reduced-motion change during an active reveal, the latest theme remains usable and suspension is released; reduced motion still prevents animation.
+- Given rapid clicks, a skipped native snapshot, navigation during a held reveal, or a reduced-motion change during an active reveal, the latest theme remains usable and suspension is released; reduced motion still prevents animation.
 - Keyboard control, CSS fallback, saved themes, default wave motion, portrait loading, project posts, news states/filtering and viewport overflow remain covered.
 
-Local results: lint passed; Astro checks returned zero errors/warnings (one existing Zod deprecation hint); 31 app unit tests, 8 CDK tests and 7 deployment tests passed; 62 Chromium/WebKit browser tests passed on both development and compiled server builds. Static/server builds, CDK TypeScript build and synthesis passed. Desktop/mobile light, dark and midpoint screenshots were reviewed. Linux container health and remote CI are verified in the linked PR before merge; deployment evidence is recorded in the issue after release. Independent agent review found no concrete bugs; classmate review remains outstanding.
+Local results: lint passed; Astro checks returned zero errors/warnings (one existing Zod deprecation hint); 31 app unit tests, 8 CDK tests and 7 deployment tests passed; the combined 76-case development suite plus two navigation-interruption cases passed; the final 78-case Chromium/WebKit suite passed on the compiled server after integration with main. Static/server builds, CDK TypeScript build and synthesis passed. Desktop/mobile light, dark and midpoint screenshots were reviewed. Linux container health and remote CI are verified in the linked PR before merge; deployment evidence is recorded in the issue after release. Independent agent review found no concrete bugs; classmate review remains outstanding.
 
 Screenshots: [desktop light](light-1440.png), [desktop reveal](reveal-1440.png), [desktop dark](dark-1440.png), [mobile light](light-390.png), [mobile reveal](reveal-390.png), [mobile dark](dark-390.png).
 

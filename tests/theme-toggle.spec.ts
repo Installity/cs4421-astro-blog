@@ -167,6 +167,34 @@ test("reducing motion during a reveal cancels it and allows later background res
   await expect.poll(() => canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL())).not.toBe(resumed);
 });
 
+test("navigation cancels a held theme reveal and resumes the persistent waves", async ({ page }) => {
+  await page.route("**/api/news", (route) => route.fulfill({ json: { items: [], sources: [], checkedAt: "2026-10-12T12:00:00Z" } }));
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
+  await page.goto(`${baseUrl}/about/`);
+  test.skip(!(await page.evaluate(() => typeof document.startViewTransition === "function")), "Browser uses the CSS color fallback");
+  await page.evaluate(() => {
+    const original = Element.prototype.animate;
+    Element.prototype.animate = function (keyframes, options) {
+      const animation = original.call(this, keyframes, options);
+      if (typeof options === "object" && options?.pseudoElement === "::view-transition-new(root)") {
+        animation.pause();
+        (window as Window & { heldReveal?: Animation }).heldReveal = animation;
+      }
+      return animation;
+    };
+  });
+  await page.getByRole("button", { name: "Switch to dark mode" }).click();
+  await expect.poll(() => page.evaluate(() => (window as Window & { heldReveal?: Animation }).heldReveal?.playState)).toBe("paused");
+  await page.getByRole("navigation").getByRole("link", { name: "Blog", exact: true }).evaluate((node) => (node as HTMLAnchorElement).click());
+  await expect(page.getByRole("searchbox")).toBeVisible();
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme-reveal", "true");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  const canvas = page.locator("[data-wave-canvas]");
+  const resumed = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
+  await expect.poll(() => canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL())).not.toBe(resumed);
+  expect(await page.evaluate(() => localStorage.getItem("waves-paused"))).toBeNull();
+});
+
 test("theme reveals preserve a saved manual background pause", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
   await page.addInitScript(() => localStorage.setItem("waves-paused", "true"));
