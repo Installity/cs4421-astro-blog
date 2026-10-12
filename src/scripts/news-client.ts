@@ -1,10 +1,12 @@
 import type { NewsResponse } from "../lib/news";
+const initializedSections = new WeakSet<HTMLElement>();
 function initializeNews() {
   for (const section of document.querySelectorAll<HTMLElement>(
     "[data-news-feed]",
   )) {
     const endpoint = section.dataset.endpoint;
-    if (!endpoint) continue;
+    if (!endpoint || initializedSections.has(section)) continue;
+    initializedSections.add(section);
     const status = section.querySelector<HTMLElement>("[data-news-status]")!;
     const list = section.querySelector<HTMLUListElement>("[data-news-list]")!;
     const checked = section.querySelector<HTMLElement>("[data-news-checked]")!;
@@ -120,9 +122,13 @@ function initializeNews() {
     document.addEventListener("astro:before-swap", () => {
       lifecycle.abort();
       clearInterval(interval);
+      initializedSections.delete(section);
     }, { once: true, signal });
     void load();
   }
 }
 
+// A newly imported inline module can evaluate after the first page-load event.
+// Initialize immediately too; the section guard prevents duplicate handlers.
 document.addEventListener("astro:page-load", initializeNews);
+initializeNews();

@@ -54,7 +54,12 @@ jobs:
         run: python3 -m unittest discover -s deployment -p 'test_*.py'
 
       - name: Build production site
+        env:
+          PUBLIC_NEWS_API_URL: https://news.example.test/api/news
         run: npm run build
+
+      - name: Test production static news lifecycle
+        run: npx playwright test --config playwright.static.config.ts
 
       - name: Check and test CDK stack
         run: |
