@@ -65,13 +65,18 @@ body {
   overflow-wrap: break-word;
 }
 /* Native theme snapshots reveal from the control without a second crossfade. */
-::view-transition-old(root),
-::view-transition-new(root) {
+:root[data-theme-reveal]::view-transition-old(root),
+:root[data-theme-reveal]::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
 }
-::view-transition-old(root) { z-index: 1; }
-::view-transition-new(root) { z-index: 2; }
+:root[data-theme-reveal]::view-transition-old(root) { z-index: 1; }
+:root[data-theme-reveal]::view-transition-new(root) { z-index: 2; }
+/* Capture the entire page for the circular theme reveal, including content
+   normally captured separately for navigation. */
+:root[data-theme-reveal] :is(main, [data-astro-transition-persist]) {
+  view-transition-name: none;
+}
 @media (prefers-reduced-motion: no-preference) {
   :root:not([data-theme-reveal]) :is(body, .site-panel, button, input, select, h1, h2, h3, h4, a, p, nav, footer, li, img, blockquote, .prose, .meta, .topics, .eyebrow) {
     transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;

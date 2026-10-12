@@ -87,88 +87,90 @@ const topics = [...new Set(posts.flatMap((post) => post.data.topics))].sort();
       score: number;
     };
 
-    const topicSelect =
-      document.querySelector<HTMLSelectElement>("#topic-select");
-    const searchForm = document.querySelector<HTMLFormElement>("#search-form");
-    const searchInput =
-      document.querySelector<HTMLInputElement>("#search-input");
-    const searchStatus = document.querySelector<HTMLElement>("#search-status");
-    const postCount = document.querySelector<HTMLElement>("#post-count");
-    const selectedTopic =
-      document.querySelector<HTMLElement>("#selected-topic");
-    const postList =
-      document.querySelector<HTMLUListElement>("[data-post-list]");
-    const postItems: SearchablePost[] = Array.from(
-      document.querySelectorAll<HTMLElement>("[data-topics]"),
-    ).map((element) => ({
-      element,
-      title: element.dataset.title ?? "",
-      body: element.dataset.body ?? "",
-      topics: element.dataset.topics?.split("|") ?? [],
-      index: Number(element.dataset.index),
-      score: 0,
-    }));
+    document.addEventListener("astro:page-load", () => {
+      const topicSelect =
+        document.querySelector<HTMLSelectElement>("#topic-select");
+      const searchForm = document.querySelector<HTMLFormElement>("#search-form");
+      const searchInput =
+        document.querySelector<HTMLInputElement>("#search-input");
+      const searchStatus = document.querySelector<HTMLElement>("#search-status");
+      const postCount = document.querySelector<HTMLElement>("#post-count");
+      const selectedTopic =
+        document.querySelector<HTMLElement>("#selected-topic");
+      const postList =
+        document.querySelector<HTMLUListElement>("[data-post-list]");
+      const postItems: SearchablePost[] = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-topics]"),
+      ).map((element) => ({
+        element,
+        title: element.dataset.title ?? "",
+        body: element.dataset.body ?? "",
+        topics: element.dataset.topics?.split("|") ?? [],
+        index: Number(element.dataset.index),
+        score: 0,
+      }));
 
-    const countOccurrences = (text: string, term: string) => {
-      let count = 0;
-      let start = 0;
-      while ((start = text.indexOf(term, start)) !== -1) {
-        count += 1;
-        start += term.length;
-      }
-      return count;
-    };
+      const countOccurrences = (text: string, term: string) => {
+        let count = 0;
+        let start = 0;
+        while ((start = text.indexOf(term, start)) !== -1) {
+          count += 1;
+          start += term.length;
+        }
+        return count;
+      };
 
-    const updateResults = (query = "") => {
-      const terms = query
-        .toLocaleLowerCase()
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean);
-      const selectedValue = topicSelect?.value ?? "all";
-      let visiblePostCount = 0;
+      const updateResults = (query = "") => {
+        const terms = query
+          .toLocaleLowerCase()
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+        const selectedValue = topicSelect?.value ?? "all";
+        let visiblePostCount = 0;
 
-      postItems.forEach((post) => {
-        const title = post.title.toLocaleLowerCase();
-        const body = post.body.toLocaleLowerCase();
-        const matchesSearch = terms.every(
-          (term) => title.includes(term) || body.includes(term),
-        );
-        post.score = terms.reduce(
-          (score, term) =>
-            score +
-            countOccurrences(title, term) * 10 +
-            countOccurrences(body, term),
-          0,
-        );
-        const matchesTopic =
-          selectedValue === "all" || post.topics.includes(selectedValue);
-        post.element.hidden = !matchesSearch || !matchesTopic;
-        if (!post.element.hidden) visiblePostCount += 1;
+        postItems.forEach((post) => {
+          const title = post.title.toLocaleLowerCase();
+          const body = post.body.toLocaleLowerCase();
+          const matchesSearch = terms.every(
+            (term) => title.includes(term) || body.includes(term),
+          );
+          post.score = terms.reduce(
+            (score, term) =>
+              score +
+              countOccurrences(title, term) * 10 +
+              countOccurrences(body, term),
+            0,
+          );
+          const matchesTopic =
+            selectedValue === "all" || post.topics.includes(selectedValue);
+          post.element.hidden = !matchesSearch || !matchesTopic;
+          if (!post.element.hidden) visiblePostCount += 1;
+        });
+
+        postItems.sort((a, b) => b.score - a.score || a.index - b.index);
+        postItems.forEach((post) => postList?.append(post.element));
+        if (searchStatus)
+          searchStatus.hidden = terms.length === 0 || visiblePostCount > 0;
+        if (postCount) postCount.textContent = String(visiblePostCount);
+        if (selectedTopic) {
+          const selectedLabel =
+            topicSelect?.options[topicSelect.selectedIndex]?.text;
+          selectedTopic.textContent =
+            terms.length > 0
+              ? `Search results for "${query.trim()}"`
+              : (selectedLabel ?? "All topics");
+        }
+      };
+
+      searchForm?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        updateResults(searchInput?.value);
       });
 
-      postItems.sort((a, b) => b.score - a.score || a.index - b.index);
-      postItems.forEach((post) => postList?.append(post.element));
-      if (searchStatus)
-        searchStatus.hidden = terms.length === 0 || visiblePostCount > 0;
-      if (postCount) postCount.textContent = String(visiblePostCount);
-      if (selectedTopic) {
-        const selectedLabel =
-          topicSelect?.options[topicSelect.selectedIndex]?.text;
-        selectedTopic.textContent =
-          terms.length > 0
-            ? `Search results for "${query.trim()}"`
-            : (selectedLabel ?? "All topics");
-      }
-    };
-
-    searchForm?.addEventListener("submit", (event) => {
-      event.preventDefault();
-      updateResults(searchInput?.value);
+      topicSelect?.addEventListener("change", () =>
+        updateResults(searchInput?.value),
+      );
     });
-
-    topicSelect?.addEventListener("change", () =>
-      updateResults(searchInput?.value),
-    );
   </script>
 </SiteLayout>
