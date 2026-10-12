@@ -17,6 +17,8 @@ The Node server exposes `GET /api/news`, using native `fetch` and `rss-parser` f
 
 News loads on page entry and refreshes every 15 minutes while the tab is visible. There is no scheduled polling without visitors.
 
+Use [CloudFront](https://d2lpj15qx37gqq.cloudfront.net/) as the public site URL. ECS hosts the live news API and a server-rendered copy of the site. Canonical links, RSS, and the sitemap prefer CloudFront; `PUBLIC_SITE_URL` can override it at build time. Portraits are bundled locally instead of relying on expiring external image links.
+
 ## Running and configuration
 
 Use Node.js 22.12 or newer:
