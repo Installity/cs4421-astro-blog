@@ -1,51 +1,128 @@
 <button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch color theme">
-	<span class="theme-toggle-label">Toggle theme</span>
+  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20.9 13.1A9 9 0 0 1 10.9 3.1 9 9 0 1 0 20.9 13.1Z" />
+  </svg>
 </button>
 
 <script>
-	const button = document.querySelector<HTMLButtonElement>('[data-theme-toggle]');
+  const button = document.querySelector<HTMLButtonElement>('[data-theme-toggle]');
+  const root = document.documentElement;
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  let requestedTheme = root.dataset.theme === 'dark' ? 'dark' : 'light';
+  let request = 0;
+  let activeTransition: ViewTransition | undefined;
+  let activeAnimation: Animation | undefined;
 
-	function updateButton() {
-		if (!button) return;
-		const isDark = document.documentElement.dataset.theme === 'dark';
-		const label = isDark ? 'Switch to light mode' : 'Switch to dark mode';
-		button.setAttribute('aria-label', label);
-		const text = button.querySelector<HTMLElement>('.theme-toggle-label');
-		if (text) text.textContent = isDark ? 'Light mode' : 'Dark mode';
-	}
+  function updateButton() {
+    if (!button) return;
+    const isDark = root.dataset.theme === 'dark';
+    const label = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.setAttribute('aria-pressed', String(isDark));
+  }
 
-	updateButton();
-	button?.addEventListener('click', () => {
-		const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-		document.documentElement.dataset.theme = nextTheme;
-		try {
-			localStorage.setItem('theme', nextTheme);
-		} catch {
-			// The choice still applies to this page when storage is unavailable.
-		}
-		updateButton();
-	});
+  function stopReveal() {
+    activeAnimation?.cancel();
+    activeTransition?.skipTransition();
+  }
+
+  updateButton();
+  motion.addEventListener('change', () => {
+    if (motion.matches) stopReveal();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopReveal();
+  });
+  button?.addEventListener('click', async () => {
+    if (!button) return;
+    stopReveal();
+    const currentRequest = ++request;
+    const nextTheme = requestedTheme === 'dark' ? 'light' : 'dark';
+    requestedTheme = nextTheme;
+    const applyTheme = () => {
+      // A skipped transition still invokes its callback. Only the latest click wins.
+      if (currentRequest !== request) return;
+      root.dataset.theme = nextTheme;
+      try {
+        localStorage.setItem('theme', nextTheme);
+      } catch {
+        // The choice still applies when storage is unavailable.
+      }
+      updateButton();
+    };
+    if (!document.startViewTransition || motion.matches) {
+      delete root.dataset.themeReveal;
+      applyTheme();
+      return;
+    }
+
+    const rect = button.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    root.dataset.themeReveal = 'true';
+    let transition: ViewTransition | undefined;
+    try {
+      transition = document.startViewTransition(applyTheme);
+      activeTransition = transition;
+      await transition.ready;
+      if (currentRequest !== request) return;
+      activeAnimation = root.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+        { duration: 480, easing: 'cubic-bezier(0.2, 0, 0, 1)', pseudoElement: '::view-transition-new(root)' },
+      );
+      await activeAnimation.finished;
+      await transition.finished;
+    } catch {
+      transition?.skipTransition();
+      applyTheme();
+    } finally {
+      if (currentRequest === request) {
+        // Release native snapshots before re-enabling the CSS color fallback.
+        await transition?.finished.catch(() => {});
+        delete root.dataset.themeReveal;
+        activeTransition = undefined;
+        activeAnimation = undefined;
+      }
+    }
+  });
 </script>
 
 <style>
-	.theme-toggle {
-		flex: none;
-		padding: 0.45rem 0.75rem;
-		border: 1px solid rgb(var(--gray));
-		border-radius: 999px;
-		background: var(--surface);
-		color: rgb(var(--black));
-		font: inherit;
-		font-size: 0.8rem;
-		line-height: 1.2;
-		cursor: pointer;
-	}
-	.theme-toggle:hover {
-		border-color: var(--accent);
-		color: var(--accent);
-	}
-	.theme-toggle:focus-visible {
-		outline: 3px solid var(--accent);
-		outline-offset: 3px;
-	}
+  .theme-toggle {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid rgb(var(--gray));
+    border-radius: 999px;
+    background: var(--surface);
+    color: rgb(var(--black));
+    font: inherit;
+    font-size: 0.8rem;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+  .theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .theme-toggle[aria-pressed="true"] svg {
+    fill: currentColor;
+  }
+  .theme-toggle svg {
+    transition: fill 180ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .theme-toggle svg {
+      transition: none;
+    }
+  }
+  .theme-toggle:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+  }
 </style>

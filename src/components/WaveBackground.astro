@@ -13,6 +13,7 @@
   if (canvas && control && context) {
     control.hidden = false;
     const motion = matchMedia("(prefers-reduced-motion: reduce)");
+    // Animate on fresh visits; only an explicit saved pause or reduced motion stops it.
     let paused = false;
     try {
       paused = localStorage.getItem("waves-paused") === "true";
@@ -78,6 +79,7 @@
       control.title = control.getAttribute("aria-label") ?? "";
       control.disabled = motion.matches;
       control.setAttribute("aria-pressed", String(stopped));
+      control.dataset.motionState = stopped ? "paused" : "running";
       canvas.dataset.motion = stopped ? "paused" : "running";
       draw();
       if (!stopped && !document.hidden) frame = requestAnimationFrame(tick);
