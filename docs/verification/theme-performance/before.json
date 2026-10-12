@@ -1,0 +1,54 @@
+{
+  "viewport": "1440x1000",
+  "cpuThrottle": 4,
+  "samples": [
+    {
+      "from": "light",
+      "draws": 14,
+      "frames": 29,
+      "medianMs": 16.699999999999932,
+      "p95Ms": 16.799999999999955,
+      "gapsOver25ms": 1
+    },
+    {
+      "from": "dark",
+      "draws": 12,
+      "frames": 29,
+      "medianMs": 16.700000000000045,
+      "p95Ms": 16.800000000000182,
+      "gapsOver25ms": 1
+    },
+    {
+      "from": "light",
+      "draws": 14,
+      "frames": 29,
+      "medianMs": 16.699999999999818,
+      "p95Ms": 16.800000000000182,
+      "gapsOver25ms": 1
+    },
+    {
+      "from": "dark",
+      "draws": 13,
+      "frames": 29,
+      "medianMs": 16.699999999999818,
+      "p95Ms": 16.800000000000182,
+      "gapsOver25ms": 1
+    },
+    {
+      "from": "light",
+      "draws": 12,
+      "frames": 29,
+      "medianMs": 16.699999999999818,
+      "p95Ms": 16.800000000000182,
+      "gapsOver25ms": 1
+    },
+    {
+      "from": "dark",
+      "draws": 12,
+      "frames": 29,
+      "medianMs": 16.699999999999818,
+      "p95Ms": 16.800000000000182,
+      "gapsOver25ms": 1
+    }
+  ]
+}

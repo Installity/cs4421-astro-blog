@@ -92,7 +92,7 @@ test("reveals the new theme from the button without a competing color fade", asy
     };
   });
   await toggle.click();
-  await expect(page.locator("html")).toHaveAttribute("data-reveal-duration", "480");
+  await expect(page.locator("html")).toHaveAttribute("data-reveal-duration", "600");
   await expect(page.locator("html")).toHaveAttribute("data-snapshot-color-duration", "0s");
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement, "::view-transition-new(root)").clipPath)).toContain("circle(");
   const frames = JSON.parse(await page.locator("html").getAttribute("data-reveal-frames") ?? "{}");
@@ -101,6 +101,89 @@ test("reveals the new theme from the button without a competing color fade", asy
   await toggle.click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(page.locator("html")).not.toHaveAttribute("data-theme-reveal", "true");
+});
+
+for (const theme of ["light", "dark"] as const) {
+  test(`freezes the wave phase during a ${theme} theme reveal and resumes afterwards`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "no-preference" });
+    await page.goto(`${baseUrl}/about/`);
+    test.skip(!(await page.evaluate(() => typeof document.startViewTransition === "function")), "Browser uses the CSS color fallback");
+    const canvas = page.locator("[data-wave-canvas]");
+    await expect(canvas).toHaveAttribute("data-ready", "true");
+    const originalPalette = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
+    await page.evaluate(() => {
+      const original = Element.prototype.animate;
+      Element.prototype.animate = function (keyframes, options) {
+        const animation = original.call(this, keyframes, options);
+        if (typeof options === "object" && options?.pseudoElement === "::view-transition-new(root)") {
+          animation.pause();
+          (window as Window & { heldReveal?: Animation }).heldReveal = animation;
+        }
+        return animation;
+      };
+    });
+    await page.locator("[data-theme-toggle]").click();
+    await expect.poll(() => page.evaluate(() => (window as Window & { heldReveal?: Animation }).heldReveal?.playState)).toBe("paused");
+    const frozen = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
+    expect(frozen).not.toBe(originalPalette);
+    const afterFrames = await canvas.evaluate(async (node) => {
+      for (let i = 0; i < 12; i++) await new Promise(requestAnimationFrame);
+      return (node as HTMLCanvasElement).toDataURL();
+    });
+    expect(afterFrames).toBe(frozen);
+    // Snapshot suspension must not masquerade as a reader's saved pause choice.
+    await expect(page.getByRole("button", { name: "Pause background" })).toHaveAttribute("data-motion-state", "running");
+    expect(await page.evaluate(() => localStorage.getItem("waves-paused"))).toBeNull();
+    await page.evaluate(() => (window as Window & { heldReveal?: Animation }).heldReveal!.play());
+    await expect(page.locator("html")).not.toHaveAttribute("data-theme-reveal", "true");
+    await expect.poll(() => canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL())).not.toBe(frozen);
+  });
+}
+
+test("reducing motion during a reveal cancels it and allows later background resumption", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
+  await page.goto(`${baseUrl}/about/`);
+  test.skip(!(await page.evaluate(() => typeof document.startViewTransition === "function")), "Browser uses the CSS color fallback");
+  await page.evaluate(() => {
+    const original = Element.prototype.animate;
+    Element.prototype.animate = function (keyframes, options) {
+      const animation = original.call(this, keyframes, options);
+      if (typeof options === "object" && options?.pseudoElement === "::view-transition-new(root)") animation.pause();
+      return animation;
+    };
+  });
+  await page.getByRole("button", { name: "Switch to dark mode" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-theme-reveal", "true");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme-reveal", "true");
+  await expect(page.getByRole("button", { name: "Background motion reduced" })).toBeDisabled();
+  const canvas = page.locator("[data-wave-canvas]");
+  await expect(canvas).toHaveAttribute("data-motion", "paused");
+  expect(await page.evaluate(() => localStorage.getItem("waves-paused"))).toBeNull();
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expect(page.getByRole("button", { name: "Pause background" })).toBeEnabled();
+  const resumed = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
+  await expect.poll(() => canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL())).not.toBe(resumed);
+});
+
+test("theme reveals preserve a saved manual background pause", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
+  await page.addInitScript(() => localStorage.setItem("waves-paused", "true"));
+  await page.goto(`${baseUrl}/about/`);
+  const canvas = page.locator("[data-wave-canvas]");
+  await expect(page.getByRole("button", { name: "Resume background" })).toBeEnabled();
+  await page.getByRole("button", { name: "Switch to dark mode" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme-reveal", "true");
+  const paused = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
+  const afterFrames = await canvas.evaluate(async (node) => {
+    for (let i = 0; i < 12; i++) await new Promise(requestAnimationFrame);
+    return (node as HTMLCanvasElement).toDataURL();
+  });
+  expect(afterFrames).toBe(paused);
+  await expect(canvas).toHaveAttribute("data-motion", "paused");
+  expect(await page.evaluate(() => localStorage.getItem("waves-paused"))).toBe("true");
 });
 
 test("rapid toggles finish on the latest request and leave the control usable", async ({ page }) => {
@@ -122,6 +205,9 @@ test("rapid toggles finish on the latest request and leave the control usable", 
   await page.getByRole("button", { name: "Switch to light mode" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(page.locator("html")).not.toHaveAttribute("data-theme-reveal", "true");
+  const canvas = page.locator("[data-wave-canvas]");
+  const resumed = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
+  await expect.poll(() => canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL())).not.toBe(resumed);
   expect(errors).toEqual([]);
 });
 
@@ -153,6 +239,10 @@ test("a skipped native reveal still applies the theme and allows the next click"
   await expect(page.locator("html")).not.toHaveAttribute("data-theme-reveal", "true");
   await page.getByRole("button", { name: "Switch to light mode" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme-reveal", "true");
+  const canvas = page.locator("[data-wave-canvas]");
+  const resumed = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
+  await expect.poll(() => canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL())).not.toBe(resumed);
 });
 
 test("fresh visits animate the canvas and the icons smoothly reflect saved pause state", async ({ page }) => {
