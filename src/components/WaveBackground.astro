@@ -13,6 +13,9 @@
   if (canvas && control && context) {
     control.hidden = false;
     const motion = matchMedia("(prefers-reduced-motion: reduce)");
+    const root = document.documentElement;
+    const canAnimate = () =>
+      !paused && !motion.matches && !document.hidden && !root.hasAttribute("data-theme-reveal");
     // Animate on fresh visits; only an explicit saved pause or reduced motion stops it.
     let paused = false;
     try {
@@ -54,7 +57,7 @@
       }
     }
     function tick(now: number) {
-      if (paused || motion.matches || document.hidden) return;
+      if (!canAnimate()) return;
       if (!last) last = now;
       if (now - last >= 1000 / 30) {
         phase += (Math.min(now - last, 100) / 1000) * 0.095;
@@ -82,7 +85,7 @@
       control.dataset.motionState = stopped ? "paused" : "running";
       canvas.dataset.motion = stopped ? "paused" : "running";
       draw();
-      if (!stopped && !document.hidden) frame = requestAnimationFrame(tick);
+      if (canAnimate()) frame = requestAnimationFrame(tick);
     }
     function resize() {
       if (!canvas || !context) return;
@@ -106,9 +109,14 @@
     window.addEventListener("resize", resize);
     document.addEventListener("visibilitychange", update);
     motion.addEventListener("change", update);
-    new MutationObserver(draw).observe(document.documentElement, {
+    new MutationObserver((changes) => {
+      // The new view-transition snapshot is live. Freeze the expensive wave loop
+      // during the reveal; still paint the new palette once at the frozen phase.
+      if (changes.some((change) => change.attributeName === "data-theme-reveal")) update();
+      else draw();
+    }).observe(root, {
       attributes: true,
-      attributeFilter: ["data-theme"],
+      attributeFilter: ["data-theme", "data-theme-reveal"],
     });
     resize();
     canvas.dataset.ready = "true";

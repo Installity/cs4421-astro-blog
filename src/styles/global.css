@@ -70,7 +70,8 @@ body {
   animation: none;
   mix-blend-mode: normal;
 }
-:root[data-theme-reveal]::view-transition-old(root) { z-index: 1; }
+/* Navigation hides the old root; keep it behind the circular theme reveal. */
+:root[data-theme-reveal]::view-transition-old(root) { z-index: 1; opacity: 1; }
 :root[data-theme-reveal]::view-transition-new(root) { z-index: 2; }
 /* Capture the entire page for the circular theme reveal, including content
    normally captured separately for navigation. */
