@@ -48,15 +48,30 @@ if (!runtime && configured) {
       </>
     )}
     <button type="button" data-news-retry hidden>
-      Refresh news
+      <svg
+        class="news-refresh-icon"
+        aria-hidden="true"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M20 7v5h-5M4 17v-5h5" />
+        <path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17" />
+      </svg>
+      <span data-news-refresh-label>Refresh news</span>
     </button>
   </div>
-  <p class="news-status" data-news-status role="status">
+  <p class="news-status" data-news-status role="status" aria-atomic="true">
     {endpoint
       ? "Loading the latest headlines…"
       : "Live news is unavailable on this version of the site. A news API URL has not been configured."}
   </p>
-  <ul class="news-list" data-news-list></ul>
+  <ul class="news-list" data-news-list aria-busy="false"></ul>
   <p class="meta" data-news-checked></p>
   <details class="source-status" data-news-sources hidden>
     <summary>Publisher availability</summary>

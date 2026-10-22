@@ -2,7 +2,9 @@ import type { APIRoute } from "astro";
 import { createNewsService, newsCorsHeaders } from "../lib/news";
 const getNews = createNewsService();
 export const GET: APIRoute = async ({ request }) => {
-  const news = await getNews();
+  const news = await getNews(
+    new URL(request.url).searchParams.get("refresh") === "1",
+  );
   return new Response(JSON.stringify(news), {
     status: news.items.length ? 200 : 503,
     headers: newsCorsHeaders(

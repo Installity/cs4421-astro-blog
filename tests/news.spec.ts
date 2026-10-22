@@ -32,7 +32,7 @@ test("news preview, publisher filters, availability and refresh work", async ({
   page,
 }) => {
   let calls = 0;
-  await page.route("**/api/news", (route) => {
+  await page.route(/\/api\/news(?:\?.*)?$/, (route) => {
     calls++;
     return route.fulfill({ json: payload });
   });
@@ -69,7 +69,7 @@ test("handles outage and recovery, rendering feed strings as text", async ({
   page,
 }) => {
   let recovered = false;
-  await page.route("**/api/news", (route) =>
+  await page.route(/\/api\/news(?:\?.*)?$/, (route) =>
     route.fulfill({
       status: recovered ? 200 : 503,
       json: recovered
@@ -95,7 +95,7 @@ test("handles outage and recovery, rendering feed strings as text", async ({
 });
 test("keeps loaded headlines if a later refresh fails", async ({ page }) => {
   let failed = false;
-  await page.route("**/api/news", (route) =>
+  await page.route(/\/api\/news(?:\?.*)?$/, (route) =>
     failed ? route.abort() : route.fulfill({ json: payload }),
   );
   await page.goto("/news/");

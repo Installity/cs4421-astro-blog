@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/news", (route) => route.fulfill({
+  await page.route(/\/api\/news(?:\?.*)?$/, (route) => route.fulfill({
     json: {
       items: [{ id: "1", title: "Navigation test headline", url: "https://example.com/story", sourceId: "techcrunch", sourceName: "TechCrunch", publishedAt: null }],
       sources: [{ id: "techcrunch", name: "TechCrunch", status: "ok", lastSuccessfulFetch: null }],
@@ -70,7 +70,7 @@ test("theme and pause controls remain usable through repeat visits and article n
 
 test("news initializes on each return with one refresh handler", async ({ page }) => {
   let calls = 0;
-  page.on("request", (request) => { if (request.url().endsWith("/api/news")) calls++; });
+  page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/news") calls++; });
   await page.goto("/about/");
   for (let visit = 0; visit < 2; visit++) {
     await page.getByRole("navigation").getByRole("link", { name: "Tech News" }).click();

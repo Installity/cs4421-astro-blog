@@ -8,6 +8,11 @@ __pycache__/
 # dependencies
 node_modules/
 
+# Local agent instructions and assessment notes
+/.agents/
+/docs/devops/
+/AGENTS.override.md
+
 # logs
 npm-debug.log*
 yarn-debug.log*

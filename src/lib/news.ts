@@ -47,8 +47,10 @@ export interface NewsResponse {
   items: NewsItem[];
   sources: NewsSourceStatus[];
   checkedAt: string;
+  refreshDeferred?: boolean;
 }
 const TTL = 15 * 60_000;
+const MANUAL_REFRESH_INTERVAL = 30_000;
 const FAILURE_TTL = 60_000;
 const MAX_STALE = 24 * 60 * 60_000;
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -144,17 +146,28 @@ export function createNewsService(
     nextCheck: number;
     failed: boolean;
     pending?: Promise<void>;
+    manualRefreshAt?: number;
   };
   const caches = new Map<string, Cache>();
-  async function load(source: (typeof NEWS_SOURCES)[number]) {
+  async function load(source: (typeof NEWS_SOURCES)[number], refresh: boolean) {
     let cache = caches.get(source.id);
     if (!cache) {
       cache = { items: [], nextCheck: 0, failed: false };
       caches.set(source.id, cache);
     }
     const entry = cache;
+    let refreshDeferred = false;
     if (entry.pending) await entry.pending;
-    else if (now() >= entry.nextCheck) {
+    else if (
+      now() >= entry.nextCheck ||
+      (refresh &&
+        !entry.failed &&
+        (entry.manualRefreshAt === undefined ||
+          now() - entry.manualRefreshAt >= MANUAL_REFRESH_INTERVAL))
+    ) {
+      // Manual checks can bypass the normal TTL, but not failure backoff or
+      // the shared cooldown. Concurrent readers still join the same fetch.
+      if (refresh) entry.manualRefreshAt = now();
       entry.pending = (async () => {
         try {
           const response = await fetcher(source.url, {
@@ -178,7 +191,7 @@ export function createNewsService(
       })();
       await entry.pending;
       entry.pending = undefined;
-    }
+    } else refreshDeferred = refresh;
     const usable =
       entry.successAt !== undefined && now() - entry.successAt <= MAX_STALE;
     return {
@@ -193,10 +206,13 @@ export function createNewsService(
             : null,
       } as NewsSourceStatus,
       checkedAt: entry.checkedAt ?? now(),
+      refreshDeferred,
     };
   }
-  return async (): Promise<NewsResponse> => {
-    const results = await Promise.all(NEWS_SOURCES.map(load));
+  return async (refresh = false): Promise<NewsResponse> => {
+    const results = await Promise.all(
+      NEWS_SOURCES.map((source) => load(source, refresh)),
+    );
     const seen = new Set<string>();
     const items = results
       .flatMap((r) => r.items)
@@ -212,6 +228,9 @@ export function createNewsService(
       checkedAt: new Date(
         Math.max(...results.map((r) => r.checkedAt)),
       ).toISOString(),
+      ...(results.some((r) => r.refreshDeferred)
+        ? { refreshDeferred: true }
+        : {}),
     };
   };
 }
