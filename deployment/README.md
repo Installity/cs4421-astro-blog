@@ -1,5 +1,9 @@
 # Production delivery
 
+See the [reliability objectives and release policy](../docs/operations/reliability.md)
+for separate static, process-health, news-availability and latency indicators,
+their proposed budgets, and the outstanding measurement work.
+
 - Static site: https://d2lpj15qx37gqq.cloudfront.net
 - ECS site/API: https://as-2b62f684bea24081892fa30f44c134ca.ecs.us-east-1.on.aws
 - Express service: `default/astro-blog`, account `873716897321`, region `us-east-1`.

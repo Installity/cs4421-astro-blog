@@ -11,6 +11,8 @@ A personal Astro blog about building software, learning through prototypes, and 
 
 ## Technical design
 
+See [ADR-001: static delivery and the containerized Astro server](docs/adr/ADR-001-transition-to-ssr-and-containers.md) for the architecture decision, alternatives, and operational tradeoffs.
+
 Astro components and shared layouts render typed Markdown/MDX content collections. Native browser scripts handle themes, canvas animation, and news interactions; TypeScript supports the application and AWS CDK infrastructure.
 
 The Node server exposes `GET /api/news`, using native `fetch` and `rss-parser` for RSS/Atom. Six fixed feeds are fetched concurrently with an eight-second timeout and a 2 MB limit per source. Headlines are normalized, deduplicated, and sorted; output uses plain text and HTTP/HTTPS links. Each source has a 15-minute memory cache, shared refresh requests, and up to 24 hours of stale data after failures. Manual refresh (`GET /api/news?refresh=1`) can revalidate before the normal cache expires, with a shared 30-second manual cooldown per source and the existing one-minute failure backoff. Deferred checks are identified in the response; check times and publisher fetch times remain distinct. Partial outages retain working sources. Caches reset on restart and are independent across instances. Refresh feedback appears immediately, preserves readable headlines during the request, and fades changed results in over 320 ms unless reduced motion is enabled.

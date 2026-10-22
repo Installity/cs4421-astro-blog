@@ -8,7 +8,7 @@ __pycache__/
 # dependencies
 node_modules/
 
-# Local agent instructions and assessment notes
+# Local agent guidance and private preparation
 /.agents/
 /docs/devops/
 /AGENTS.override.md

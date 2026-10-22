@@ -26,6 +26,7 @@ ENV NODE_ENV=production \
 COPY --from=builder --chown=node:node /app/package.json ./
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --from=builder --chown=node:node /app/deployment/start_server.mjs ./deployment/start_server.mjs
 
 USER node
 
@@ -34,4 +35,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
 
 EXPOSE 4321
 
-CMD ["node", "./dist/server/entry.mjs"]
+CMD ["node", "./deployment/start_server.mjs"]
