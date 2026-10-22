@@ -116,6 +116,11 @@ jobs:
           docker inspect my-blog --format '{{json .State.Health}}'
           exit 1
 
+      - name: Verify graceful container shutdown
+        run: |
+          docker stop --timeout 10 my-blog
+          test "$(docker inspect --format '{{.State.ExitCode}}' my-blog)" = "0"
+
       - name: Authenticate to AWS
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: aws-actions/configure-aws-credentials@v6.3.0
