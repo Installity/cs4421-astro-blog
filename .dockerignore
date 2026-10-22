@@ -3,6 +3,9 @@ dist
 .astro
 .git
 .github
+.agents
+docs/devops
+AGENTS.override.md
 
 .env
 .env.*
