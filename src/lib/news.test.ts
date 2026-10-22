@@ -45,8 +45,11 @@ describe("feed normalisation", () => {
     });
   });
   it("decodes publisher HTML entities while keeping titles plain text", async () => {
-    const xml = '<rss version="2.0"><channel><title>Test</title><item><title><![CDATA[ChatGPT&#8217;s &lsquo;UI&rsquo; &amp; &lt;b&gt;news&lt;/b&gt;]]></title><link>https://example.com/story</link></item></channel></rss>';
-    expect((await parseFeed(xml, NEWS_SOURCES[0]))[0].title).toBe("ChatGPT’s ‘UI’ & news");
+    const xml =
+      '<rss version="2.0"><channel><title>Test</title><item><title><![CDATA[ChatGPT&#8217;s &lsquo;UI&rsquo; &amp; &lt;b&gt;news&lt;/b&gt;]]></title><link>https://example.com/story</link></item></channel></rss>';
+    expect((await parseFeed(xml, NEWS_SOURCES[0]))[0].title).toBe(
+      "ChatGPT’s ‘UI’ & news",
+    );
   });
   it("drops invalid links and blanks, normalises invalid dates and duplicate fragments", async () => {
     expect(
@@ -127,6 +130,58 @@ describe("news cache and failures", () => {
     now += 60_000;
     await service();
     expect(fetcher).toHaveBeenCalledTimes(7);
+  });
+  it("revalidates manual refreshes before TTL expiry with a shared cooldown", async () => {
+    let now = 1000;
+    const fetcher = fetchRss();
+    const service = createNewsService(fetcher, () => now);
+    await service();
+    now += 1000;
+    fetcher.mockImplementation(
+      async (url) => new Response(rss(`${String(url)}?new`)),
+    );
+    const [updated, concurrent] = await Promise.all([
+      service(true),
+      service(true),
+    ]);
+    expect(fetcher).toHaveBeenCalledTimes(12);
+    expect(updated.items.every((item) => item.url.endsWith("?new"))).toBe(true);
+    expect(concurrent).toEqual(updated);
+    const checkedAt = updated.checkedAt;
+    now += 29_999;
+    const deferred = await service(true);
+    expect(fetcher).toHaveBeenCalledTimes(12);
+    expect(deferred.refreshDeferred).toBe(true);
+    expect(deferred.checkedAt).toBe(checkedAt);
+    expect(deferred.sources).toEqual(updated.sources);
+    now += 1;
+    expect((await service(true)).refreshDeferred).toBeUndefined();
+    expect(fetcher).toHaveBeenCalledTimes(18);
+    await service();
+    expect(fetcher).toHaveBeenCalledTimes(18);
+  });
+  it("manual refresh preserves failure backoff and recovers with cached headlines", async () => {
+    let now = 1000;
+    const fetcher = fetchRss();
+    const service = createNewsService(fetcher, () => now);
+    const original = await service();
+    fetcher.mockRejectedValue(new Error("Publisher down"));
+    now += 1000;
+    const failed = await service(true);
+    expect(failed.items).toEqual(original.items);
+    expect(failed.sources.every((s) => s.status === "stale")).toBe(true);
+    expect(failed.sources.map((s) => s.lastSuccessfulFetch)).toEqual(
+      original.sources.map((s) => s.lastSuccessfulFetch),
+    );
+    now += 59_999;
+    expect((await service(true)).refreshDeferred).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(12);
+    fetcher.mockImplementation(async (url) => new Response(rss(String(url))));
+    now += 1;
+    const recovered = await service(true);
+    expect(fetcher).toHaveBeenCalledTimes(18);
+    expect(recovered.sources.every((s) => s.status === "ok")).toBe(true);
+    expect(recovered.checkedAt).not.toBe(original.checkedAt);
   });
   it("retains stale results through failures and expires them after 24 hours", async () => {
     let now = 1000;

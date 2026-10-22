@@ -171,7 +171,7 @@ test("reducing motion during a reveal cancels it and allows later background res
 });
 
 test("navigation cancels a held theme reveal and resumes the persistent waves", async ({ page }) => {
-  await page.route("**/api/news", (route) => route.fulfill({ json: { items: [], sources: [], checkedAt: "2026-10-12T12:00:00Z" } }));
+  await page.route(/\/api\/news(?:\?.*)?$/, (route) => route.fulfill({ json: { items: [], sources: [], checkedAt: "2026-10-12T12:00:00Z" } }));
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
   await page.goto(`${baseUrl}/about/`);
   test.skip(!(await page.evaluate(() => typeof document.startViewTransition === "function")), "Browser uses the CSS color fallback");

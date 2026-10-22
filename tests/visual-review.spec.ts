@@ -6,7 +6,7 @@ for (const width of [1440, 390]) {
     }) => {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
-      await page.route("**/api/news", (route) =>
+      await page.route(/\/api\/news(?:\?.*)?$/, (route) =>
         route.fulfill({
           json: {
             items: [

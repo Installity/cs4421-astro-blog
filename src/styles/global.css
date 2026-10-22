@@ -339,6 +339,30 @@ button:hover {
   align-items: center;
   flex-wrap: wrap;
 }
+[data-news-retry] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 155px;
+}
+[data-news-retry][hidden] {
+  display: none;
+}
+[data-news-retry]:disabled {
+  cursor: progress;
+}
+.news-refresh-icon {
+  flex-shrink: 0;
+}
+@keyframes news-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-news-refreshing] .news-refresh-icon {
+    animation: news-refresh-spin 0.9s linear infinite;
+  }
+}
 .source-status {
   font-size: 12px;
   color: var(--secondary);

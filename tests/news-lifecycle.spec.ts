@@ -7,14 +7,14 @@ const fixture = {
 };
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/news", (route) => route.fulfill({
+  await page.route(/\/api\/news(?:\?.*)?$/, (route) => route.fulfill({
     json: fixture, headers: { "access-control-allow-origin": "*" },
   }));
 });
 
 test("first news visit after an article initializes once and cleans up on subsequent visits", async ({ page }) => {
   let requests = 0;
-  page.on("request", (request) => { if (request.url().endsWith("/api/news")) requests++; });
+  page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/news") requests++; });
   await page.goto("/about/");
   await page.getByRole("navigation").getByRole("link", { name: "Blog", exact: true }).click();
   await expect(page.getByRole("searchbox")).toBeVisible();
@@ -40,7 +40,7 @@ test("first news visit after an article initializes once and cleans up on subseq
 
 test("news loads even if its first page-load event is missed without duplicate refresh handlers", async ({ page }) => {
   let requests = 0;
-  page.on("request", (request) => { if (request.url().endsWith("/api/news")) requests++; });
+  page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/news") requests++; });
   await page.addInitScript(() => {
     let suppress = true;
     document.addEventListener("astro:page-load", (event) => {
