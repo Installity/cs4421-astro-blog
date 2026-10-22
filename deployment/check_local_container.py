@@ -31,12 +31,13 @@ def main():
         "containerPort": 4321, "container": name,
     }
     try:
-        docker("run", "-d", "--name", name, "--platform", "linux/amd64",
+        docker("create", "--name", name, "--platform", "linux/amd64",
                "--label", "cs4421.exercise=local-container",
                "-p", f"127.0.0.1:{args.port}:4321",
                "-e", "NODE_ENV=production", "-e", "HOST=0.0.0.0", "-e", "PORT=4321",
                "-e", "COURSE_EXERCISE=issue-84", args.image)
         created = True
+        docker("start", name)
         deadline = time.monotonic() + 100
         while True:
             state = json.loads(docker("inspect", name))[0]["State"]

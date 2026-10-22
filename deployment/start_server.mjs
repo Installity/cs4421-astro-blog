@@ -1,6 +1,7 @@
 // Control the standalone listener so PID 1 drains HTTP requests on SIGTERM.
 process.env.ASTRO_NODE_AUTOSTART = "disabled";
-const { startServer } = await import("../dist/server/entry.mjs");
+const entry = new URL("../dist/server/entry.mjs", import.meta.url);
+const { startServer } = await import(entry.href);
 const { server, done } = startServer();
 let stopping = false;
 
