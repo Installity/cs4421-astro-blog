@@ -68,17 +68,16 @@ for (const { path, width, count } of [
     await expect(list.locator("li")).toHaveCount(count);
     await expect(button).toBeEnabled();
     await page.evaluate(() => {
-      const samples: { title: string; opacity: number }[] = [];
-      Reflect.set(window, "newsFadeSamples", samples);
       const list = document.querySelector<HTMLElement>("[data-news-list]")!;
-      function sample() {
-        samples.push({
-          title: list.textContent ?? "",
-          opacity: Number(getComputedStyle(list).opacity),
-        });
-        if (samples.length < 600) requestAnimationFrame(sample);
-      }
-      requestAnimationFrame(sample);
+      const animate = list.animate.bind(list);
+      // Inspect real browser effects at controlled times. A short offscreen
+      // fade can finish between rendered frames on a busy WebKit CI runner.
+      list.animate = (...args) => {
+        const animation = animate(...args);
+        animation.pause();
+        animation.currentTime = 0;
+        return animation;
+      };
     });
     await button.click();
     await expect(button).toHaveText("Refreshing…");
@@ -103,25 +102,47 @@ for (const { path, width, count } of [
       );
     }
     release();
-    await expect(list.locator("a").first()).toContainText("Updated headline");
+    for (const [headline, from, to] of [
+      ["Original headline", 1, 0],
+      ["Updated headline", 0, 1],
+    ] as const) {
+      await expect(list.locator("a").first()).toContainText(headline);
+      await expect
+        .poll(() =>
+          list.evaluate(
+            (element) =>
+              element
+                .getAnimations()
+                .filter((animation) => animation.playState === "paused").length,
+          ),
+        )
+        .toBe(1);
+      await expect(button).toBeDisabled();
+      await expect(list).toHaveAttribute("aria-busy", "true");
+      const fade = await list.evaluate((element) => {
+        const animation = element.getAnimations()[0];
+        const effect = animation.effect as KeyframeEffect;
+        const duration = Number(effect.getTiming().duration);
+        animation.currentTime = duration / 2;
+        return {
+          keyframes: effect
+            .getKeyframes()
+            .map((frame) => Number(frame.opacity)),
+          opacity: Number(getComputedStyle(element).opacity),
+          duration,
+        };
+      });
+      expect(fade.keyframes).toEqual([from, to]);
+      expect(fade.duration).toBeGreaterThan(0);
+      expect(fade.duration).toBeLessThanOrEqual(400);
+      expect(fade.opacity).toBeCloseTo(0.5, 1);
+      await list.evaluate((element) => element.getAnimations()[0].finish());
+    }
     await expect(button).toBeEnabled();
     await expect(button).toHaveText("Refresh news");
     await expect(list).toHaveAttribute("aria-busy", "false");
     await expect(list).toHaveCSS("opacity", "1");
     await expect(page.getByRole("status")).toContainText("News refreshed");
-    const samples = await page.evaluate(
-      () =>
-        Reflect.get(window, "newsFadeSamples") as {
-          title: string;
-          opacity: number;
-        }[],
-    );
-    expect(
-      samples.some((s) => s.title.includes("Original") && s.opacity < 0.95),
-    ).toBe(true);
-    expect(
-      samples.some((s) => s.title.includes("Updated") && s.opacity < 0.95),
-    ).toBe(true);
     if (path === "/news/") {
       await expect(page.getByLabel("Publisher", { exact: true })).toHaveValue(
         "the-verge",
