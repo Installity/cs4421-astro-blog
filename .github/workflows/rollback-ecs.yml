@@ -1,0 +1,72 @@
+name: Rollback ECS
+run-name: ECS ${{ inputs.mode }} (${{ inputs.execute && 'execute' || 'preview' }}) by @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Ongoing deployment rollback, or restore an image after deployment completed
+        type: choice
+        options: [ongoing, restore-image]
+        default: ongoing
+        required: true
+      image_tag:
+        description: Known-good ECR release tag (sha-COMMIT-RUN_ID-ATTEMPT)
+        type: string
+        required: true
+      execute:
+        description: Execute recovery (unchecked previews and changes nothing)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Serialize recovery requests without queuing behind the deployment being stopped.
+# Freeze merges and cancel pending CI releases during recovery; see the runbook.
+concurrency:
+  group: ecs-rollback-astro-blog
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Preview or recover ECS
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      AWS_REGION: us-east-1
+      ROLLBACK_MODE: ${{ inputs.mode }}
+      ROLLBACK_IMAGE_TAG: ${{ inputs.image_tag }}
+      ROLLBACK_EXECUTE: ${{ inputs.execute }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out reviewed workflow revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ECR_ROLE_ARN || 'arn:aws:iam::873716897321:role/GitHubActionsAstroECR' }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Resolve tested image and preview or execute recovery
+        shell: bash
+        run: |
+          flags=()
+          if [[ "$ROLLBACK_EXECUTE" == "true" ]]; then flags+=(--execute); fi
+          python3 deployment/rollback_ecs.py \
+            --mode "$ROLLBACK_MODE" --image-tag "$ROLLBACK_IMAGE_TAG" \
+            --evidence-dir "$RUNNER_TEMP/ecs-rollback" "${flags[@]}"
+      - name: Retain recovery evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecs-rollback-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ecs-rollback/
+          if-no-files-found: warn
+          retention-days: 30

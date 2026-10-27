@@ -37,4 +37,8 @@ aws iam put-role-policy --role-name GitHubActionsAstroECR \
 
 For rollback, update the Express service to a previously tested ECR digest and
 retain the existing container port, health path, environment, and other settings.
-The pre-news image was `astro-blog@sha256:e6174cfb203069aa9b32c648777f228fba2a9c829cf911cd102e16bd18f7cd6d`.
+Use the [manual GitHub recovery runbook](../docs/operations/ecs-rollback.md) for
+the **Rollback ECS** workflow: preview or execute an ongoing-deployment rollback,
+or restore a prior tested release image without rebuilding. It needs the reviewed
+supplemental rollback policy on the existing OIDC role before use. Select a fresh,
+verified known-good release; a historical image mentioned in notes is not enough.
