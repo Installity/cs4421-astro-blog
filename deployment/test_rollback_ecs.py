@@ -21,6 +21,14 @@ TARGET = SOURCE.replace("/source", "/target")
 
 class RollbackTests(unittest.TestCase):
     def setUp(self):
+        # Exercise the Actions summary path locally without writing fixture data
+        # into the real CI job summary or sharing output between test cases.
+        summary_directory = tempfile.TemporaryDirectory(prefix="rollback-test-summary-")
+        self.addCleanup(summary_directory.cleanup)
+        self.summary = Path(summary_directory.name) / "summary.md"
+        summary_environment = patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": str(self.summary)})
+        summary_environment.start()
+        self.addCleanup(summary_environment.stop)
         self.release = {"tag": TAG, "digest": GOOD, "image": IMAGE, "source_sha": SHA,
                         "run_id": "123", "attempt": 1}
         self.run = {"status": "completed", "conclusion": "success", "event": "push",
@@ -32,7 +40,17 @@ class RollbackTests(unittest.TestCase):
                        "targetServiceRevision": {"arn": TARGET}}
         self.source = {"serviceArn": rollback.SERVICE, "serviceRevisionArn": SOURCE,
                        "taskDefinition": "task:16", "containerImages": [
-                           {"containerName": "Main", "imageDigest": GOOD}]}
+                           {"containerName": "Main", "imageDigest": GOOD, "image": IMAGE}]}
+        self.current = {"serviceArn": rollback.SERVICE, "serviceRevisionArn": TARGET,
+                        "taskDefinition": "task:18", "containerImages": [
+                            {"containerName": "Main", "imageDigest": BAD,
+                             "image": f"{rollback.REGISTRY}@{BAD}"}]}
+        self.history = [
+            {"status": "SUCCESSFUL", "targetServiceRevisionArn": SOURCE,
+             "createdAt": "2026-10-22T10:00:00+00:00"},
+            {"status": "SUCCESSFUL", "targetServiceRevisionArn": TARGET,
+             "createdAt": "2026-10-27T10:00:00+00:00"},
+        ]
         self.service = {"serviceArn": rollback.SERVICE, "activeConfigurations": [{
             "taskDefinitionArn": "task:18", "primaryContainer": {
                 "image": f"{rollback.REGISTRY}@{BAD}", "containerPort": 4321,
@@ -122,6 +140,182 @@ class RollbackTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "No successful service deployment"):
             self.restore_plan()
 
+    def automatic_plan(self, mode="restore-image", history=None):
+        if history is None:
+            history = [self.record] if mode == "ongoing" else self.history
+        def image_lookup(service, operation, *arguments):
+            self.assertEqual((service, operation), ("ecr", "describe-images"))
+            return {"imageDetails": [{"imageDigest": GOOD, "imageTags": ["v1.0.0", TAG]}]}
+        with patch.object(rollback, "deployments", return_value=history), \
+                patch.object(rollback, "deployment", return_value=self.record), \
+                patch.object(rollback, "express_service", return_value=self.service), \
+                patch.object(rollback, "revision", side_effect=lambda arn: {SOURCE: self.source, TARGET: self.current}[arn]), \
+                patch.object(rollback, "github_run", return_value=self.run), \
+                patch.object(rollback, "aws", side_effect=image_lookup):
+            return rollback.make_plan(mode, "", "automatic")
+
+    def test_automatic_ongoing_uses_exact_source_digest_without_a_tag_input(self):
+        plan = self.automatic_plan("ongoing")
+        self.assertEqual(plan["release"], self.release)
+        self.assertEqual(plan["source_revision"], SOURCE)
+        self.assertEqual(plan["image_selection"], "automatic")
+        self.assertEqual(plan["deployment_arn"], DEPLOYMENT)
+
+    def test_automatic_restore_uses_latest_different_successful_image_not_list_order(self):
+        # Input history is deliberately oldest-first. A newer failed deployment
+        # must not enter the candidate set, even if it has a different image.
+        plan = self.automatic_plan(history=self.history + [{
+            "status": "ROLLBACK_FAILED", "targetServiceRevisionArn": "failed",
+            "createdAt": "2026-10-27T11:00:00+00:00"}, {
+            "status": "SUCCESSFUL", "targetServiceRevisionArn": "older-unneeded",
+            "createdAt": "2026-10-21T10:00:00+00:00"}])
+        self.assertEqual(plan["release"], self.release)
+        self.assertEqual(plan["previous_revision"], SOURCE)
+        self.assertEqual(plan["current_digest"], BAD)
+        self.assertEqual(plan["current_revision"], TARGET)
+
+    def test_automatic_restore_uses_ecs_digest_even_if_current_configuration_contains_a_tag(self):
+        self.service["activeConfigurations"][0]["primaryContainer"]["image"] = f"{rollback.REGISTRY}:v1.0.0"
+        self.assertEqual(self.automatic_plan()["current_digest"], BAD)
+
+    def test_automatic_restore_skips_repeated_deployments_of_the_current_digest(self):
+        repeated = {**self.history[1], "createdAt": "2026-10-27T09:00:00+00:00"}
+        self.assertEqual(self.automatic_plan(history=self.history + [repeated])["release"]["digest"], GOOD)
+        self.source["containerImages"][0]["imageDigest"] = BAD
+        with self.assertRaisesRegex(RuntimeError, "different image"):
+            self.automatic_plan()
+
+    def test_automatic_restore_refuses_missing_or_ambiguous_history(self):
+        for history in [[], [self.history[0]],
+                        [{**item, "createdAt": "same"} for item in self.history],
+                        [{**self.history[0], "createdAt": ""}, self.history[1]]]:
+            with self.subTest(history=history), self.assertRaises(RuntimeError):
+                self.automatic_plan(history=history)
+
+    def test_automatic_selection_preserves_active_deployment_guards(self):
+        for history in [[], [self.record, self.record],
+                        [{**self.record, "status": "ROLLBACK_IN_PROGRESS"}]]:
+            with self.subTest(history=history), self.assertRaises(RuntimeError):
+                self.automatic_plan("ongoing", history)
+        with self.assertRaisesRegex(RuntimeError, "still ongoing"):
+            self.automatic_plan(history=self.history + [self.record])
+        self.record["sourceServiceRevisions"] = [{"arn": SOURCE}, {"arn": TARGET}]
+        with self.assertRaisesRegex(RuntimeError, "ambiguous"):
+            self.automatic_plan("ongoing")
+
+    def test_selection_requires_manual_tag_and_never_silently_ignores_an_automatic_tag(self):
+        for tag, selection in [("", "manual"), (TAG, "automatic"), (TAG, "unknown")]:
+            with self.subTest(selection=selection), patch.object(rollback, "aws") as cli, \
+                    patch.object(rollback, "deployments") as history, self.assertRaises(ValueError):
+                rollback.make_plan("ongoing", tag, selection)
+            cli.assert_not_called()
+            history.assert_not_called()
+        self.assertEqual(self.ongoing_plan()["image_selection"], "manual")
+
+    def test_automatic_revision_requires_pipeline_tag_and_existing_digest(self):
+        for details in [[], [{"imageDigest": BAD, "imageTags": [TAG]}],
+                        [{"imageDigest": GOOD, "imageTags": ["latest", "v1.0.0"]}]]:
+            with self.subTest(details=details), \
+                    patch.object(rollback, "aws", return_value={"imageDetails": details}), \
+                    patch.object(rollback, "github_run") as run, self.assertRaises(RuntimeError):
+                rollback.release_for_revision(self.source)
+            run.assert_not_called()
+
+    def test_automatic_revision_rejects_other_repository_and_missing_main_digest(self):
+        for image in ["other.example/astro-blog@" + GOOD, ""]:
+            self.source["containerImages"][0]["image"] = image
+            with patch.object(rollback, "aws") as cli, self.assertRaisesRegex(RuntimeError, "repository"):
+                rollback.release_for_revision(self.source)
+            cli.assert_not_called()
+        self.source["containerImages"] = []
+        with self.assertRaisesRegex(RuntimeError, "unambiguous"):
+            rollback.release_for_revision(self.source)
+
+    def test_automatic_revision_tries_another_tag_of_the_same_digest_only_after_invalid_ci(self):
+        newer = f"sha-{SHA}-124-1"
+        with patch.object(rollback, "aws", return_value={"imageDetails": [
+                {"imageDigest": GOOD, "imageTags": [TAG, newer]}]}), \
+                patch.object(rollback, "github_run", side_effect=[{**self.run, "conclusion": "failure"}, self.run]) as run:
+            self.assertEqual(rollback.release_for_revision(self.source), self.release)
+            self.assertEqual(run.call_args_list[0].args, ("124", "1"))
+        with patch.object(rollback, "aws", return_value={"imageDetails": [
+                {"imageDigest": GOOD, "imageTags": [TAG]}]}), \
+                patch.object(rollback, "github_run", return_value={**self.run, "conclusion": "failure"}), \
+                self.assertRaisesRegex(RuntimeError, "no successful pipeline"):
+            rollback.release_for_revision(self.source)
+
+    def test_automatic_revision_refuses_tag_drift_and_does_not_hide_access_failures(self):
+        for failure in [RuntimeError("GitHub unavailable"), OSError("connection failed")]:
+            with self.subTest(failure=failure), \
+                    patch.object(rollback, "aws", return_value={"imageDetails": [
+                        {"imageDigest": GOOD, "imageTags": [TAG]}]}), \
+                    patch.object(rollback, "release_image", side_effect=failure), \
+                    self.assertRaises(type(failure)):
+                rollback.release_for_revision(self.source)
+        with patch.object(rollback, "aws", return_value={"imageDetails": [
+                {"imageDigest": GOOD, "imageTags": [TAG]}]}), \
+                patch.object(rollback, "release_image", return_value={**self.release, "digest": BAD}), \
+                self.assertRaisesRegex(RuntimeError, "no longer matches"):
+            rollback.release_for_revision(self.source)
+
+    def test_automatic_preview_does_not_mutate_and_execution_reselects_before_mutating(self):
+        plan = self.automatic_plan("ongoing")
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Mock(directory=Path(directory))
+            with patch.object(rollback, "aws", return_value={"Account": rollback.ACCOUNT}) as cli, \
+                    patch.object(rollback, "make_plan", return_value=plan) as make:
+                rollback.recover("ongoing", "", False, evidence, "automatic")
+            self.assertEqual(cli.call_count, 1)
+            evidence.start.assert_not_called()
+            make.assert_called_once_with("ongoing", "", "automatic")
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Mock(directory=Path(directory))
+            with patch.object(rollback, "aws", return_value={"Account": rollback.ACCOUNT}) as cli, \
+                    patch.object(rollback, "make_plan", side_effect=[plan, {**plan, "source_revision": "changed"}]), \
+                    self.assertRaisesRegex(RuntimeError, "changed"):
+                rollback.recover("ongoing", "", True, evidence, "automatic")
+            self.assertEqual(cli.call_count, 1)
+            evidence.finish.assert_called_once()
+
+    def test_action_summary_displays_automatic_selection_provenance_without_runtime_secrets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            summary = Path(directory) / "summary.md"
+            with patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": str(summary)}):
+                rollback.summarize_plan(self.automatic_plan(), False)
+            text = summary.read_text()
+            for expected in ["automatic", "preview only", TAG, GOOD, f"/commit/{SHA}", "/runs/123/attempts/1"]:
+                self.assertIn(expected, text)
+            self.assertNotIn("secret-reference", text)
+            self.assertNotIn("environment", text)
+
+    def test_automatic_execution_uses_the_verified_plan_in_both_modes(self):
+        for mode in ["ongoing", "restore-image"]:
+            plan = self.automatic_plan(mode)
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                evidence = Mock(directory=Path(directory))
+                with patch.object(rollback, "aws", return_value={"Account": rollback.ACCOUNT}) as cli, \
+                        patch.object(rollback, "make_plan", return_value=plan) as make, \
+                        patch.object(rollback, "express_service", return_value=self.service), \
+                        patch.object(rollback, "wait_for_recovery") as wait:
+                    rollback.recover(mode, "", True, evidence, "automatic")
+                self.assertEqual(make.call_count, 2)
+                self.assertTrue(all(call.args == (mode, "", "automatic") for call in make.call_args_list))
+                expected = "stop-service-deployment" if mode == "ongoing" else "update-express-gateway-service"
+                self.assertEqual(cli.call_args.args[1], expected)
+                if mode == "restore-image":
+                    self.assertEqual(json.loads(cli.call_args.args[-1])["primaryContainer"]["image"], IMAGE)
+                wait.assert_called_once()
+
+    def test_cli_passes_automatic_selection_with_an_empty_tag_and_preserves_manual_usage(self):
+        for flags, selection, tag in [(["--image-selection", "automatic"], "automatic", ""),
+                                      (["--image-tag", TAG], "manual", TAG)]:
+            with self.subTest(selection=selection), \
+                    patch("sys.argv", ["rollback_ecs.py", "--mode", "ongoing", *flags]), \
+                    patch.object(rollback, "Evidence") as evidence, \
+                    patch.object(rollback, "recover") as recover:
+                rollback.main()
+                recover.assert_called_once_with("ongoing", tag, False, evidence.return_value, selection)
+
     def test_preview_never_mutates_or_starts_probe(self):
         evidence = Mock()
         with tempfile.TemporaryDirectory() as directory:
@@ -139,13 +333,16 @@ class RollbackTests(unittest.TestCase):
                 patch.object(rollback, "make_plan") as plan, self.assertRaises(RuntimeError):
             rollback.recover("ongoing", TAG, True, Mock())
         plan.assert_not_called()
+        original_plan = self.ongoing_plan()
         with tempfile.TemporaryDirectory() as directory:
             evidence = Mock(directory=Path(directory))
             with patch.object(rollback, "aws", return_value={"Account": rollback.ACCOUNT}) as cli, \
-                    patch.object(rollback, "make_plan", side_effect=[{"target": "old"}, {"target": "new"}]), \
+                    patch.object(rollback, "make_plan", side_effect=[
+                        original_plan, {**original_plan, "target_revision": "changed"}]), \
                     self.assertRaisesRegex(RuntimeError, "changed"):
                 rollback.recover("ongoing", TAG, True, evidence)
             self.assertEqual(cli.call_count, 1)
+            self.assertIn(TAG, self.summary.read_text())
             evidence.finish.assert_called_once()
 
     def test_ongoing_execution_stops_only_the_inspected_deployment(self):

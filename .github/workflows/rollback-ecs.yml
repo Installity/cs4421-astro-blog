@@ -1,5 +1,5 @@
 name: Rollback ECS
-run-name: ECS ${{ inputs.mode }} (${{ inputs.execute && 'execute' || 'preview' }}) by @${{ github.actor }}
+run-name: ECS ${{ inputs.mode }} / ${{ inputs.image_selection }} (${{ inputs.execute && 'execute' || 'preview' }}) by @${{ github.actor }}
 
 on:
   workflow_dispatch:
@@ -10,10 +10,16 @@ on:
         options: [ongoing, restore-image]
         default: ongoing
         required: true
-      image_tag:
-        description: Known-good ECR release tag (sha-COMMIT-RUN_ID-ATTEMPT)
-        type: string
+      image_selection:
+        description: Automatic selects a previous verified image; manual uses the tag below
+        type: choice
+        options: [automatic, manual]
+        default: automatic
         required: true
+      image_tag:
+        description: Manual only — ECR release tag (sha-COMMIT-RUN_ID-ATTEMPT); leave blank for automatic
+        type: string
+        required: false
       execute:
         description: Execute recovery (unchecked previews and changes nothing)
         type: boolean
@@ -41,6 +47,7 @@ jobs:
     env:
       AWS_REGION: us-east-1
       ROLLBACK_MODE: ${{ inputs.mode }}
+      ROLLBACK_IMAGE_SELECTION: ${{ inputs.image_selection }}
       ROLLBACK_IMAGE_TAG: ${{ inputs.image_tag }}
       ROLLBACK_EXECUTE: ${{ inputs.execute }}
       GITHUB_TOKEN: ${{ github.token }}
@@ -60,7 +67,8 @@ jobs:
           flags=()
           if [[ "$ROLLBACK_EXECUTE" == "true" ]]; then flags+=(--execute); fi
           python3 deployment/rollback_ecs.py \
-            --mode "$ROLLBACK_MODE" --image-tag "$ROLLBACK_IMAGE_TAG" \
+            --mode "$ROLLBACK_MODE" --image-selection "$ROLLBACK_IMAGE_SELECTION" \
+            --image-tag "$ROLLBACK_IMAGE_TAG" \
             --evidence-dir "$RUNNER_TEMP/ecs-rollback" "${flags[@]}"
       - name: Retain recovery evidence even on failure
         if: always()

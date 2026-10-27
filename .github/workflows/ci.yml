@@ -38,6 +38,13 @@ jobs:
       - name: Install CDK dependencies
         run: npm ci --prefix cdk --prefer-offline --no-audit
 
+      - name: Prefer Ubuntu archive for browser dependencies
+        run: |
+          # The Azure mirror has repeatedly stalled browser setup on hosted runners.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|https\?://azure\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
