@@ -21,6 +21,14 @@ TARGET = SOURCE.replace("/source", "/target")
 
 class RollbackTests(unittest.TestCase):
     def setUp(self):
+        # Exercise the Actions summary path locally without writing fixture data
+        # into the real CI job summary or sharing output between test cases.
+        summary_directory = tempfile.TemporaryDirectory(prefix="rollback-test-summary-")
+        self.addCleanup(summary_directory.cleanup)
+        self.summary = Path(summary_directory.name) / "summary.md"
+        summary_environment = patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": str(self.summary)})
+        summary_environment.start()
+        self.addCleanup(summary_environment.stop)
         self.release = {"tag": TAG, "digest": GOOD, "image": IMAGE, "source_sha": SHA,
                         "run_id": "123", "attempt": 1}
         self.run = {"status": "completed", "conclusion": "success", "event": "push",
@@ -325,13 +333,16 @@ class RollbackTests(unittest.TestCase):
                 patch.object(rollback, "make_plan") as plan, self.assertRaises(RuntimeError):
             rollback.recover("ongoing", TAG, True, Mock())
         plan.assert_not_called()
+        original_plan = self.ongoing_plan()
         with tempfile.TemporaryDirectory() as directory:
             evidence = Mock(directory=Path(directory))
             with patch.object(rollback, "aws", return_value={"Account": rollback.ACCOUNT}) as cli, \
-                    patch.object(rollback, "make_plan", side_effect=[{"target": "old"}, {"target": "new"}]), \
+                    patch.object(rollback, "make_plan", side_effect=[
+                        original_plan, {**original_plan, "target_revision": "changed"}]), \
                     self.assertRaisesRegex(RuntimeError, "changed"):
                 rollback.recover("ongoing", TAG, True, evidence)
             self.assertEqual(cli.call_count, 1)
+            self.assertIn(TAG, self.summary.read_text())
             evidence.finish.assert_called_once()
 
     def test_ongoing_execution_stops_only_the_inspected_deployment(self):
