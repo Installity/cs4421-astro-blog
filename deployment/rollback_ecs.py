@@ -31,6 +31,10 @@ DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 TERMINAL = {"SUCCESSFUL", "ROLLBACK_SUCCESSFUL", "ROLLBACK_FAILED", "STOPPED"}
 
 
+class UnverifiedRelease(RuntimeError):
+    """A release tag exists but its CI run did not pass the provenance checks."""
+
+
 def utc_now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -74,7 +78,7 @@ def release_image(tag):
         and run.get("path") == ".github/workflows/ci.yml"
         and run.get("repository", {}).get("full_name") == REPOSITORY
     ):
-        raise RuntimeError("The tag must identify a successful main-push CI run and attempt")
+        raise UnverifiedRelease("The tag must identify a successful main-push CI run and attempt")
     result = aws("ecr", "describe-images", "--repository-name", "astro-blog",
                  "--image-ids", f"imageTag={tag}")
     images = result.get("imageDetails", [])
@@ -126,6 +130,67 @@ def main_digest(record):
     return images[0]["imageDigest"]
 
 
+def release_for_revision(record):
+    """Resolve an ECS digest to an existing pipeline tag, then verify that tag."""
+    digest = main_digest(record)
+    image = next(item for item in record["containerImages"] if item["containerName"] == "Main").get("image", "")
+    if not (image == f"{REGISTRY}@{digest}" or image.startswith(f"{REGISTRY}:")):
+        raise RuntimeError("Previous revision does not use the expected ECR repository")
+    result = aws("ecr", "describe-images", "--repository-name", "astro-blog",
+                 "--image-ids", f"imageDigest={digest}")
+    images = result.get("imageDetails", [])
+    if len(images) != 1 or images[0].get("imageDigest") != digest:
+        raise RuntimeError("The previous ECS image digest is unavailable in ECR")
+    tags = [tag for tag in images[0].get("imageTags", []) if RELEASE_TAG.fullmatch(tag)]
+    # Several pipeline runs can label the same bytes. Prefer the newest verified
+    # run, but never fall through an AWS/GitHub access or transport failure.
+    tags.sort(key=lambda tag: tuple(map(int, RELEASE_TAG.fullmatch(tag).groups()[1:])), reverse=True)
+    for tag in tags:
+        try:
+            selected = release_image(tag)
+        except UnverifiedRelease:
+            continue
+        if selected["digest"] != digest:
+            raise RuntimeError("Pipeline tag no longer matches the previous ECS image digest")
+        return selected
+    raise RuntimeError("Previous ECS image has no successful pipeline release tag; select a verified image manually")
+
+
+def automatic_restore(history, configuration):
+    """Choose a different successful image using ECS history, not tag age."""
+    successful = [item for item in history if item.get("status") == "SUCCESSFUL"]
+    if any(not item.get("createdAt") for item in successful):
+        raise RuntimeError("Successful deployment history lacks timestamps; select an image manually")
+    successful.sort(key=lambda item: item["createdAt"], reverse=True)
+    if len({item["createdAt"] for item in successful}) != len(successful):
+        raise RuntimeError("Successful deployment ordering is ambiguous; select an image manually")
+    revisions = {}
+
+    def inspect(item):
+        arn = item["targetServiceRevisionArn"]
+        if arn not in revisions:
+            revisions[arn] = revision(arn)
+        return revisions[arn]
+
+    current = None
+    for item in successful:
+        candidate = inspect(item)
+        if candidate.get("taskDefinition") == configuration["taskDefinitionArn"]:
+            current = candidate
+            break
+    if current is None:
+        raise RuntimeError("Cannot prove the current image from successful ECS history; select an image manually")
+    current_digest = main_digest(current)
+    for item in successful:
+        candidate = inspect(item)
+        if main_digest(candidate) != current_digest:
+            # Stop on missing provenance rather than silently selecting a much
+            # older image. The operator can explicitly choose another release.
+            return (release_for_revision(candidate), candidate["serviceRevisionArn"],
+                    current_digest, current["serviceRevisionArn"])
+    raise RuntimeError("No previous successful deployment has a different image; select an image manually")
+
+
 def current_service():
     result = aws("ecs", "describe-services", "--cluster", "default", "--services", SERVICE)
     if (result.get("failures") or len(result.get("services", [])) != 1
@@ -141,11 +206,17 @@ def express_service():
     return service
 
 
-def make_plan(mode, tag):
-    selected = release_image(tag)
+def make_plan(mode, tag="", image_selection="manual"):
+    if image_selection not in {"automatic", "manual"}:
+        raise ValueError("Image selection must be automatic or manual")
+    if image_selection == "automatic" and tag:
+        raise ValueError("Leave image_tag blank for automatic selection, or choose manual")
+    if image_selection == "manual" and not tag:
+        raise ValueError("Manual selection requires a pipeline image_tag")
+    selected = release_image(tag) if image_selection == "manual" else None
     history = deployments()
     active = [item for item in history if item.get("status") not in TERMINAL]
-    plan = {"mode": mode, "service": SERVICE, "release": selected}
+    plan = {"mode": mode, "service": SERVICE, "image_selection": image_selection}
     if mode == "ongoing":
         if len(active) != 1 or active[0].get("status") not in {"PENDING", "IN_PROGRESS"}:
             raise RuntimeError("Expected exactly one PENDING/IN_PROGRESS deployment; otherwise inspect ECS")
@@ -154,6 +225,8 @@ def make_plan(mode, tag):
         if record.get("status") not in {"PENDING", "IN_PROGRESS"} or len(sources) != 1:
             raise RuntimeError("Deployment changed or has an ambiguous recovery source; preview again")
         source = revision(sources[0]["arn"])
+        if image_selection == "automatic":
+            selected = release_for_revision(source)
         if main_digest(source) != selected["digest"]:
             raise RuntimeError("Previous service revision does not contain the selected tested image")
         plan.update(deployment_arn=record["serviceDeploymentArn"],
@@ -167,19 +240,44 @@ def make_plan(mode, tag):
         # Prove this digest was actually used by a successful service deployment,
         # not merely assigned a plausible tag after an unrelated CI run succeeded.
         previous = None
-        for item in sorted(history, key=lambda item: item.get("createdAt", ""), reverse=True):
-            if item.get("status") == "SUCCESSFUL":
-                candidate = revision(item["targetServiceRevisionArn"])
-                if main_digest(candidate) == selected["digest"]:
-                    previous = candidate["serviceRevisionArn"]
-                    break
+        if image_selection == "automatic":
+            selected, previous, current_digest, current_revision = automatic_restore(history, configuration)
+            plan.update(current_digest=current_digest, current_revision=current_revision)
+        else:
+            for item in sorted(history, key=lambda item: item.get("createdAt", ""), reverse=True):
+                if item.get("status") == "SUCCESSFUL":
+                    candidate = revision(item["targetServiceRevisionArn"])
+                    if main_digest(candidate) == selected["digest"]:
+                        previous = candidate["serviceRevisionArn"]
+                        break
         if not previous:
             raise RuntimeError("No successful service deployment proves the selected digest; inspect its provenance")
         fingerprint = hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()
         plan.update(previous_revision=previous, current_task=configuration["taskDefinitionArn"],
                     configuration_hash=fingerprint,
                     current_image=configuration["primaryContainer"]["image"])
+    plan["release"] = selected
     return plan
+
+
+def summarize_plan(plan, execute):
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary:
+        return
+    selected = plan["release"]
+    with open(summary, "a") as stream:
+        stream.write(
+            "## Selected recovery image\n\n"
+            f"- Selection: **{plan['image_selection']}**\n"
+            f"- Operation: **{plan['mode']} / {'execute' if execute else 'preview only'}**\n"
+            f"- Image tag: `{selected['tag']}`\n"
+            f"- Immutable digest: `{selected['digest']}`\n"
+            f"- [Source commit {selected['source_sha'][:7]}](https://github.com/{REPOSITORY}/commit/{selected['source_sha']})\n"
+            f"- [Successful CI run {selected['run_id']}, attempt {selected['attempt']}]"
+            f"(https://github.com/{REPOSITORY}/actions/runs/{selected['run_id']}/attempts/{selected['attempt']})\n\n"
+            "Known good means previously deployed and CI-verified, not guaranteed free of bugs. "
+            "Automatic selection resolves again on each dispatch; use manual selection to pin this tag.\n\n"
+        )
 
 
 def health_sample():
@@ -283,19 +381,20 @@ def wait_for_recovery(plan, evidence, deadline):
     raise TimeoutError("Recovery not verified within 25 minutes; inspect ECS and retained observations")
 
 
-def recover(mode, tag, execute, evidence):
+def recover(mode, tag, execute, evidence, image_selection="manual"):
     identity = aws("sts", "get-caller-identity")
     if identity.get("Account") != ACCOUNT:
         raise RuntimeError("Authenticated to the wrong AWS account")
-    plan = make_plan(mode, tag)
+    plan = make_plan(mode, tag, image_selection)
     (evidence.directory / "plan.json").write_text(json.dumps(plan, indent=2) + "\n")
     evidence.event("plan_verified", **plan, execute=execute)
+    summarize_plan(plan, execute)
     if not execute:
         evidence.event("preview_only", message="No cloud change requested; select Execute to perform recovery")
         return
     evidence.start()
     try:
-        if make_plan(mode, tag) != plan:
+        if make_plan(mode, tag, image_selection) != plan:
             raise RuntimeError("Recovery target or configuration changed; no mutation submitted, preview again")
         if mode == "ongoing":
             evidence.event("rollback_requested", mode=mode, image=plan["release"]["image"])
@@ -325,14 +424,16 @@ def recover(mode, tag, execute, evidence):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["ongoing", "restore-image"], required=True)
-    parser.add_argument("--image-tag", required=True)
+    parser.add_argument("--image-selection", choices=["automatic", "manual"], default="manual",
+                        help="Select automatically or supply a manual tag (CLI default preserves existing usage)")
+    parser.add_argument("--image-tag", default="", help="Required for manual selection; leave blank for automatic")
     parser.add_argument("--execute", action="store_true", help="Mutate ECS; omitted means preview only")
     parser.add_argument("--evidence-dir", default="rollback-evidence")
     arguments = parser.parse_args()
     evidence = Evidence(arguments.evidence_dir)
     result = "failed"
     try:
-        recover(arguments.mode, arguments.image_tag, arguments.execute, evidence)
+        recover(arguments.mode, arguments.image_tag, arguments.execute, evidence, arguments.image_selection)
         result = "verified recovery" if arguments.execute else "preview only; no deployment changed"
     except (RuntimeError, ValueError, KeyError, OSError, TimeoutError, subprocess.TimeoutExpired) as error:
         evidence.event("recovery_failed", message=str(error))
