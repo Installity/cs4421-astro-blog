@@ -1,0 +1,39 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListOnlyAstroBlogDeployments",
+      "Effect": "Allow",
+      "Action": "ecs:ListServiceDeployments",
+      "Resource": "arn:aws:ecs:us-east-1:873716897321:service/default/astro-blog",
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-1"}}
+    },
+    {
+      "Sid": "InspectAndStopOnlyAstroBlogDeployments",
+      "Effect": "Allow",
+      "Action": ["ecs:DescribeServiceDeployments", "ecs:StopServiceDeployment"],
+      "Resource": [
+        "arn:aws:ecs:us-east-1:873716897321:service/default/astro-blog",
+        "arn:aws:ecs:us-east-1:873716897321:service-deployment/default/astro-blog/*"
+      ],
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-1"}}
+    },
+    {
+      "Sid": "InspectOnlyAstroBlogRevisions",
+      "Effect": "Allow",
+      "Action": "ecs:DescribeServiceRevisions",
+      "Resource": [
+        "arn:aws:ecs:us-east-1:873716897321:service/default/astro-blog",
+        "arn:aws:ecs:us-east-1:873716897321:service-revision/default/astro-blog/*"
+      ],
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-1"}}
+    },
+    {
+      "Sid": "ResolveOnlyAstroBlogImages",
+      "Effect": "Allow",
+      "Action": "ecr:DescribeImages",
+      "Resource": "arn:aws:ecr:us-east-1:873716897321:repository/astro-blog",
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-1"}}
+    }
+  ]
+}

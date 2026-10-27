@@ -18,6 +18,7 @@ cdk.out
 coverage
 playwright-report
 test-results
+rollback-evidence
 
 .DS_Store
 npm-debug.log*
