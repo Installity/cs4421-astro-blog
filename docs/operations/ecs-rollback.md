@@ -124,7 +124,8 @@ verify the exact CI run attempt identified by the image tag.
 6. Watch UTC events and health observations. `rollback_request_accepted` means
    AWS accepted a request, not that recovery completed. Completion requires the
    expected ECS image/revision and running task state, followed by three valid
-   health responses, nonempty news and the CloudFront CORS header. Preserve
+   health responses, nonempty news and exact CORS headers for CloudFront,
+   `https://andreitrn.me` and `https://www.andreitrn.me`. Preserve
    failed samples even when recovery eventually succeeds.
 7. Download the `ecs-rollback-<run-ID>-<attempt>` artifact, inspect CloudWatch and
    the affected behavior, and fix the faulty source through a reviewed PR before

@@ -13,7 +13,7 @@ const { PUBLIC_SITE_URL } = loadEnv(process.env.NODE_ENV ?? "production", proces
 export default defineConfig({
   output: isContainerBuild ? "server" : "static",
   adapter: isContainerBuild ? node({ mode: "standalone" }) : undefined,
-  site: PUBLIC_SITE_URL || "https://d2lpj15qx37gqq.cloudfront.net",
+  site: PUBLIC_SITE_URL || (isContainerBuild ? "https://ssr.andreitrn.me" : "https://andreitrn.me"),
   integrations: [
     mdx(),
     sitemap(),
