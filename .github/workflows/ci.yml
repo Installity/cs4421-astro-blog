@@ -172,7 +172,7 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
       ECS_SERVICE_ARN: arn:aws:ecs:us-east-1:873716897321:service/default/astro-blog
-      NEWS_ALLOWED_ORIGINS: https://d2lpj15qx37gqq.cloudfront.net
+      NEWS_ALLOWED_ORIGINS: https://d2lpj15qx37gqq.cloudfront.net,https://andreitrn.me,https://www.andreitrn.me
       ECS_APPLICATION_URL: https://as-2b62f684bea24081892fa30f44c134ca.ecs.us-east-1.on.aws
       IMAGE_URI: ${{ needs.container.outputs.image_uri }}
     steps:
@@ -188,10 +188,13 @@ jobs:
       - name: Verify application and news API
         run: |
           curl --fail --show-error --retry 3 "${ECS_APPLICATION_URL}/api/health"
-          curl --fail --show-error --retry 3 \
-            -D /tmp/news.headers \
-            -H "Origin: ${NEWS_ALLOWED_ORIGINS}" \
-            "${ECS_APPLICATION_URL}/api/news" -o /tmp/news.json
-          python3 -c 'import json; data=json.load(open("/tmp/news.json")); assert data["items"], "News API returned no headlines"'
-          python3 -c 'import os; headers=open("/tmp/news.headers").read().lower(); assert "access-control-allow-origin: " + os.environ["NEWS_ALLOWED_ORIGINS"].lower() in headers, "Missing CloudFront CORS header"'
+          IFS=',' read -r -a origins <<< "$NEWS_ALLOWED_ORIGINS"
+          for origin in "${origins[@]}"; do
+            curl --fail --show-error --retry 3 \
+              -D /tmp/news.headers \
+              -H "Origin: ${origin}" \
+              "${ECS_APPLICATION_URL}/api/news" -o /tmp/news.json
+            python3 -c 'import json; data=json.load(open("/tmp/news.json")); assert data["items"], "News API returned no headlines"'
+            EXPECTED_ORIGIN="$origin" python3 -c 'import os; headers=open("/tmp/news.headers").read().splitlines(); expected="access-control-allow-origin: " + os.environ["EXPECTED_ORIGIN"]; assert expected in [line.lower() for line in headers], "Missing exact CORS header for " + os.environ["EXPECTED_ORIGIN"]'
+          done
           echo "Deployed ${IMAGE_URI} to ${ECS_APPLICATION_URL}" >> "$GITHUB_STEP_SUMMARY"

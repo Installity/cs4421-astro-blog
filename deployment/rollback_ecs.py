@@ -26,6 +26,7 @@ SERVICE = f"arn:aws:ecs:{REGION}:{ACCOUNT}:service/default/astro-blog"
 REGISTRY = f"{ACCOUNT}.dkr.ecr.{REGION}.amazonaws.com/astro-blog"
 APP_URL = "https://as-2b62f684bea24081892fa30f44c134ca.ecs.us-east-1.on.aws"
 ORIGIN = "https://d2lpj15qx37gqq.cloudfront.net"
+STATIC_ORIGINS = (ORIGIN, "https://andreitrn.me", "https://www.andreitrn.me")
 RELEASE_TAG = re.compile(r"sha-([0-9a-f]{40})-([1-9][0-9]*)-([1-9][0-9]*)\Z")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 TERMINAL = {"SUCCESSFUL", "ROLLBACK_SUCCESSFUL", "ROLLBACK_FAILED", "STOPPED"}
@@ -344,13 +345,14 @@ def verify_application():
         if not health_sample()["ok"]:
             raise RuntimeError("Post-rollback health verification failed")
         time.sleep(1)
-    request = Request(f"{APP_URL}/api/news", headers={"Origin": ORIGIN})
-    with urlopen(request, timeout=20) as response:
-        body = json.loads(response.read(2 * 1024 * 1024))
-        if (response.status != 200 or response.geturl() != f"{APP_URL}/api/news"
-                or not isinstance(body, dict) or not isinstance(body.get("items"), list) or not body["items"]
-                or response.headers.get("Access-Control-Allow-Origin") != ORIGIN):
-            raise RuntimeError("Post-rollback news/CORS verification failed")
+    for origin in STATIC_ORIGINS:
+        request = Request(f"{APP_URL}/api/news", headers={"Origin": origin})
+        with urlopen(request, timeout=20) as response:
+            body = json.loads(response.read(2 * 1024 * 1024))
+            if (response.status != 200 or response.geturl() != f"{APP_URL}/api/news"
+                    or not isinstance(body, dict) or not isinstance(body.get("items"), list) or not body["items"]
+                    or response.headers.get("Access-Control-Allow-Origin") != origin):
+                raise RuntimeError(f"Post-rollback news/CORS verification failed for {origin}")
 
 
 def wait_for_recovery(plan, evidence, deadline):
@@ -375,7 +377,7 @@ def wait_for_recovery(plan, evidence, deadline):
             evidence.event("ecs_recovery_completed")
             verify_application()
             evidence.event("application_verified", digest=plan["release"]["digest"],
-                           checks=["health_200_json_three_times", "nonempty_news", "cloudfront_cors"])
+                           checks=["health_200_json_three_times", "nonempty_news", "all_static_origins_cors"])
             return
         time.sleep(5)
     raise TimeoutError("Recovery not verified within 25 minutes; inspect ECS and retained observations")

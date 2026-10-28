@@ -19,7 +19,9 @@ The Node server exposes `GET /api/news`, using native `fetch` and `rss-parser` f
 
 News loads on page entry and refreshes every 15 minutes while the tab is visible. There is no scheduled polling without visitors.
 
-Use [CloudFront](https://d2lpj15qx37gqq.cloudfront.net/) as the public site URL. ECS hosts the live news API and a server-rendered copy of the site. Canonical links, RSS, and the sitemap prefer CloudFront; `PUBLIC_SITE_URL` can override it at build time. Portraits are bundled locally instead of relying on expiring external image links.
+The custom domain targets are [andreitrn.me](https://andreitrn.me/) for the static blog and [ssr.andreitrn.me](https://ssr.andreitrn.me/) for the ECS site. Their certificate, routing and DNS cutover steps are in the [custom-domain runbook](docs/operations/custom-domains.md); configuration in Git alone does not make a domain live. The separate [CloudFront URL](https://d2lpj15qx37gqq.cloudfront.net/) and [ECS HTTPS URL](https://as-2b62f684bea24081892fa30f44c134ca.ecs.us-east-1.on.aws/) remain available for assessment and recovery.
+
+Canonical links, RSS and the sitemap use the custom domain for the selected static or server build; `PUBLIC_SITE_URL` can override it at build time. CloudFront redirects `www.andreitrn.me` to the root domain, retaining paths and queries. Portraits are bundled locally instead of relying on expiring external image links.
 
 ## Running and configuration
 

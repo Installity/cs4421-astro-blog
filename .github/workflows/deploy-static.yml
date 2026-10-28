@@ -20,6 +20,7 @@ jobs:
               run: npm ci --prefix cdk
             - name: Build Astro Static Site
               env:
+                PUBLIC_SITE_URL: https://andreitrn.me
                 PUBLIC_NEWS_API_URL: ${{ vars.PUBLIC_NEWS_API_URL || 'https://as-2b62f684bea24081892fa30f44c134ca.ecs.us-east-1.on.aws/api/news' }}
               run: npm run build
             - name: Configure AWS Credentials
@@ -28,6 +29,9 @@ jobs:
                 aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
                 aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
                 aws-region: us-east-1
+            - name: Preview Infrastructure Changes
+              working-directory: cdk
+              run: npx cdk diff --no-change-set
             - name: Deploy Infrastructure & Assets with AWS CDK
               working-directory: cdk
               run: npx cdk deploy --require-approval never

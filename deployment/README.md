@@ -6,12 +6,22 @@ their proposed budgets, and the outstanding measurement work.
 
 - Static site: https://d2lpj15qx37gqq.cloudfront.net
 - ECS site/API: https://as-2b62f684bea24081892fa30f44c134ca.ecs.us-east-1.on.aws
+- Static custom domain target: https://andreitrn.me
+- ECS custom domain target: https://ssr.andreitrn.me
 - Express service: `default/astro-blog`, account `873716897321`, region `us-east-1`.
+
+Complete the [certificate/routing/DNS cutover runbook](../docs/operations/custom-domains.md)
+before treating the custom addresses as live. The two AWS URLs stay available.
 
 The static workflow embeds the ECS `/api/news` URL during its build. Override
 the default with the repository Actions variable `PUBLIC_NEWS_API_URL` if the
-API moves. The ECS workflow adds the CloudFront origin to `NEWS_ALLOWED_ORIGINS`
-while preserving existing origins and other container settings.
+API moves. The ECS workflow adds CloudFront, `https://andreitrn.me` and
+`https://www.andreitrn.me` to `NEWS_ALLOWED_ORIGINS`, while preserving existing
+origins and other container settings. Verification requests each origin separately
+and requires its exact CORS response; a comma-separated list is not a valid Origin
+request header. The static API default stays on the working AWS endpoint until
+the ECS custom hostname is ready, then `PUBLIC_NEWS_API_URL` can switch it to
+`https://ssr.andreitrn.me/api/news` on a subsequent static build.
 
 On a merge/push to `main`, CI validates the application and container, publishes
 an immutable ECR image, then runs `deploy_ecs.py`. It waits for any existing

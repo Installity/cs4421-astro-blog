@@ -16,7 +16,7 @@ npm run build
 npm ci --prefix cdk
 npm run build --prefix cdk
 npm test --prefix cdk -- --runInBand
-cdk synth
+npm run cdk --prefix cdk -- synth
 ```
 
 The root build must run before CDK synthesis because the stack packages
@@ -46,5 +46,10 @@ deploy it.
 
 The S3 bucket is retained if the stack is deleted, so removing the stack does
 not delete the site files. Plan to clean up retained resources separately when
-the coursework is finished. CloudFront's default domain uses its default TLS
-certificate; a custom certificate and domain would need an explicit TLS policy.
+the coursework is finished. The distribution attaches the existing us-east-1 ACM
+certificate for `andreitrn.me` and `www.andreitrn.me`, requires TLS1.2 or newer and
+redirects HTTP to HTTPS. The viewer function redirects www to the root domain
+before directory rewriting, preserving paths and query values. The certificate
+must be Issued before deployment; it is imported rather than recreated by CDK.
+`SiteUrl` retains the CloudFront address and `CustomSiteUrl` reports the custom
+target. Complete the [DNS cutover](../docs/operations/custom-domains.md) separately.

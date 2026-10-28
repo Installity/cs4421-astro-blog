@@ -59,6 +59,17 @@ it("returns partial results and configured CORS headers", async () => {
   const disallowed = (await GET(context("https://other.example"))) as Response;
   expect(disallowed.headers.get("Access-Control-Allow-Origin")).toBeNull();
 });
+it("serves news to each deployed static origin while rejecting lookalike domains", async () => {
+  const allowed = ["https://d2lpj15qx37gqq.cloudfront.net", "https://andreitrn.me", "https://www.andreitrn.me"];
+  vi.stubEnv("NEWS_ALLOWED_ORIGINS", allowed.join(","));
+  state.getNews.mockResolvedValue({ items: [{ id: "story" }], sources: [], checkedAt: "2026-10-28T12:00:00Z" });
+  for (const origin of [...allowed, "https://andreitrn.me.evil.example", "http://andreitrn.me"]) {
+    const response = (await GET(context(origin))) as Response;
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(allowed.includes(origin) ? origin : null);
+    expect(response.headers.get("Vary")).toBe("Origin");
+  }
+});
 it("passes manual revalidation only for an explicit refresh=1 query", async () => {
   state.getNews.mockResolvedValue({
     items: [],

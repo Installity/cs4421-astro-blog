@@ -438,13 +438,21 @@ class RollbackTests(unittest.TestCase):
         with patch.object(rollback, "health_sample", return_value={"ok": True}), \
                 patch.object(rollback.time, "sleep"), patch.object(rollback, "urlopen") as opener:
             opener.return_value.__enter__.return_value = response
-            for items, origin, expected in [([], rollback.ORIGIN, False),
-                                             ([{}], "https://wrong.example", False),
-                                             ([{}], rollback.ORIGIN, True)]:
+            for items, bad_origin in [([], None), ([{}], rollback.ORIGIN),
+                                      ([{}], "https://andreitrn.me"), ([{}], "https://www.andreitrn.me"),
+                                      ([{}], None)]:
                 response.read.return_value = json.dumps({"items": items}).encode()
-                response.headers = {"Access-Control-Allow-Origin": origin}
-                if expected:
+                def reply(request, timeout):
+                    origin = request.get_header("Origin")
+                    response.headers = {"Access-Control-Allow-Origin": "https://wrong.example"
+                                        if origin == bad_origin else origin}
+                    return opener.return_value
+                opener.side_effect = reply
+                opener.reset_mock()
+                if items and bad_origin is None:
                     rollback.verify_application()
+                    self.assertEqual([call.args[0].get_header("Origin") for call in opener.call_args_list],
+                                     list(rollback.STATIC_ORIGINS))
                 else:
                     with self.assertRaises(RuntimeError):
                         rollback.verify_application()
