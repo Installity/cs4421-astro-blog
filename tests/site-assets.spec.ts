@@ -13,7 +13,8 @@ for (const slug of ["velsat-software", "exglass-software"]) {
     const source = new URL((await portrait.getAttribute("src"))!, page.url());
     expect(source.origin).toBe(new URL(page.url()).origin);
     expect(externalPortraits).toEqual([]);
-    const site = process.env.PUBLIC_SITE_URL || "https://d2lpj15qx37gqq.cloudfront.net";
+    const site = process.env.PUBLIC_SITE_URL ||
+      (process.env.ASTRO_OUTPUT === "server" ? "https://ssr.andreitrn.me" : "https://andreitrn.me");
     const canonical = new URL(`/blog/${slug}/`, site).href;
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", canonical);
     await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", canonical);
