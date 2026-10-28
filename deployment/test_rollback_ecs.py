@@ -36,8 +36,16 @@ class RollbackTests(unittest.TestCase):
                     "path": ".github/workflows/ci.yml",
                     "repository": {"full_name": rollback.REPOSITORY}}
         self.record = {"serviceArn": rollback.SERVICE, "serviceDeploymentArn": DEPLOYMENT,
+                       "createdAt": "2026-10-27T20:18:36.602000+00:00",
                        "status": "IN_PROGRESS", "sourceServiceRevisions": [{"arn": SOURCE}],
                        "targetServiceRevision": {"arn": TARGET}}
+        self.completed = {**self.record, "status": "ROLLBACK_SUCCESSFUL",
+                          "finishedAt": "2026-10-27T20:21:33.896000+00:00"}
+        # Actual canary DescribeServices shape observed during the investigation:
+        # no top-level task definition; running workloads have revision summaries.
+        self.ecs = {"taskDefinition": None, "runningCount": 1, "desiredCount": 1, "pendingCount": 0,
+                    "currentServiceRevisions": [{"arn": SOURCE, "requestedTaskCount": 1,
+                                                 "runningTaskCount": 1, "pendingTaskCount": 0}]}
         self.source = {"serviceArn": rollback.SERVICE, "serviceRevisionArn": SOURCE,
                        "taskDefinition": "task:16", "containerImages": [
                            {"containerName": "Main", "imageDigest": GOOD, "image": IMAGE}]}
@@ -394,10 +402,12 @@ class RollbackTests(unittest.TestCase):
 
     def test_wait_requires_requested_source_running_and_functional_verification(self):
         plan = self.ongoing_plan()
-        service = {"taskDefinition": "wrong", "runningCount": 1, "desiredCount": 1, "pendingCount": 0}
+        other = {**self.ecs, "currentServiceRevisions": [
+            {**self.ecs["currentServiceRevisions"][0], "arn": TARGET}]}
         evidence = Mock()
-        with patch.object(rollback, "deployment", return_value={"status": "ROLLBACK_SUCCESSFUL"}), \
-                patch.object(rollback, "current_service", side_effect=[service, {**service, "taskDefinition": "task:16"}]), \
+        with patch.object(rollback, "deployment", return_value=self.completed), \
+                patch.object(rollback, "deployments", return_value=[self.record]), \
+                patch.object(rollback, "current_service", side_effect=[other, self.ecs, self.ecs]), \
                 patch.object(rollback, "revision", return_value=self.source), \
                 patch.object(rollback, "verify_application") as verify, patch.object(rollback.time, "sleep") as sleep:
             rollback.wait_for_recovery(plan, evidence, float("inf"))
@@ -405,6 +415,109 @@ class RollbackTests(unittest.TestCase):
             verify.assert_called_once()
         with self.assertRaises(TimeoutError):
             rollback.wait_for_recovery(plan, Mock(), 0)
+
+    def test_canary_recovery_uses_revision_summaries_even_without_task_definition(self):
+        plan = self.ongoing_plan()
+        for top_level in [None, "task:18", "task:16"]:
+            with self.subTest(taskDefinition=top_level):
+                self.assertTrue(rollback.recovered_source_is_running(
+                    plan, {**self.ecs, "taskDefinition": top_level}))
+        missing = copy.deepcopy(self.ecs)
+        missing.pop("taskDefinition")
+        self.assertTrue(rollback.recovered_source_is_running(plan, missing))
+        self.assertFalse(rollback.recovered_source_is_running(plan, {
+            "taskDefinition": "task:16", "runningCount": 1, "desiredCount": 1, "pendingCount": 0}))
+
+    def test_recovered_revision_requires_complete_capacity_and_no_other_workload(self):
+        plan = self.ongoing_plan()
+        for change in [{"runningCount": 0}, {"runningCount": 2}, {"desiredCount": 0},
+                       {"pendingCount": 1}, {"currentServiceRevisions": []}]:
+            with self.subTest(change=change):
+                self.assertFalse(rollback.recovered_source_is_running(plan, {**self.ecs, **change}))
+        for change in [{"requestedTaskCount": 0}, {"runningTaskCount": 0},
+                       {"pendingTaskCount": 1}, {"arn": TARGET}]:
+            with self.subTest(change=change):
+                altered = {**self.ecs, "currentServiceRevisions": [
+                    {**self.ecs["currentServiceRevisions"][0], **change}]}
+                self.assertFalse(rollback.recovered_source_is_running(plan, altered))
+        for key in ["requestedTaskCount", "runningTaskCount", "pendingTaskCount"]:
+            other = {"arn": TARGET, "requestedTaskCount": 0, "runningTaskCount": 0, "pendingTaskCount": 0}
+            self.assertTrue(rollback.recovered_source_is_running(plan, {
+                **self.ecs, "currentServiceRevisions": [*self.ecs["currentServiceRevisions"], other]}))
+            other[key] = 1
+            self.assertFalse(rollback.recovered_source_is_running(plan, {
+                **self.ecs, "currentServiceRevisions": [*self.ecs["currentServiceRevisions"], other]}))
+
+    def test_canary_wait_still_requires_aws_completion_and_matching_image(self):
+        plan = self.ongoing_plan()
+        with patch.object(rollback, "deployment", side_effect=[self.record, self.completed]), \
+                patch.object(rollback, "deployments", return_value=[self.record]), \
+                patch.object(rollback, "current_service", return_value=self.ecs), \
+                patch.object(rollback, "revision", return_value=self.source), \
+                patch.object(rollback, "verify_application") as verify, patch.object(rollback.time, "sleep") as sleep:
+            rollback.wait_for_recovery(plan, Mock(), float("inf"))
+            sleep.assert_called_once_with(5)
+            verify.assert_called_once()
+        wrong_image = copy.deepcopy(self.source)
+        wrong_image["containerImages"][0]["imageDigest"] = BAD
+        for wrong in [wrong_image, {**self.source, "taskDefinition": "task:wrong"}]:
+            with self.subTest(source=wrong), \
+                    patch.object(rollback, "deployment", return_value=self.completed), \
+                    patch.object(rollback, "deployments", return_value=[self.record]), \
+                    patch.object(rollback, "current_service", return_value=self.ecs), \
+                    patch.object(rollback, "revision", return_value=wrong), \
+                    patch.object(rollback, "verify_application") as verify, \
+                    self.assertRaisesRegex(RuntimeError, "wrong task definition or image"):
+                rollback.wait_for_recovery(plan, Mock(), float("inf"))
+            verify.assert_not_called()
+
+    def test_later_release_is_reported_before_and_during_application_verification(self):
+        plan = self.ongoing_plan()
+        later = {**self.record, "serviceDeploymentArn": DEPLOYMENT + "-later",
+                 "createdAt": "2026-10-27T20:28:41+00:00"}
+        for history, expected_checks in [([[self.record, later]], 0),
+                                         ([[self.record], [self.record, later]], 1)]:
+            evidence = Mock()
+            with self.subTest(history=history), \
+                    patch.object(rollback, "deployment", return_value=self.completed), \
+                    patch.object(rollback, "deployments", side_effect=history), \
+                    patch.object(rollback, "current_service", return_value=self.ecs), \
+                    patch.object(rollback, "revision", return_value=self.source), \
+                    patch.object(rollback, "verify_application") as verify, \
+                    self.assertRaisesRegex(RuntimeError, "later ECS deployment superseded"):
+                rollback.wait_for_recovery(plan, evidence, float("inf"))
+            self.assertEqual(verify.call_count, expected_checks)
+            evidence.event.assert_any_call("recovery_superseded", deployment_arn=later["serviceDeploymentArn"],
+                                           status="IN_PROGRESS", rollback_status="ROLLBACK_SUCCESSFUL")
+            self.assertNotIn("application_verified", [call.args[0] for call in evidence.event.call_args_list])
+
+    def test_revision_change_during_application_checks_is_not_reported_as_success(self):
+        plan = self.ongoing_plan()
+        evidence = Mock()
+        with patch.object(rollback, "deployment", return_value=self.completed), \
+                patch.object(rollback, "deployments", return_value=[self.record]), \
+                patch.object(rollback, "current_service", side_effect=[self.ecs, {**self.ecs, "pendingCount": 1}]), \
+                patch.object(rollback, "revision", return_value=self.source), \
+                patch.object(rollback, "verify_application"), \
+                self.assertRaisesRegex(RuntimeError, "changed during application verification"):
+            rollback.wait_for_recovery(plan, evidence, float("inf"))
+        self.assertNotIn("application_verified", [call.args[0] for call in evidence.event.call_args_list])
+
+    def test_wait_records_only_changed_safe_state_and_propagates_application_failure(self):
+        plan = self.ongoing_plan()
+        evidence = Mock()
+        service = {**self.ecs, "environment": [{"name": "TOKEN", "value": "do-not-log"}]}
+        with patch.object(rollback, "deployment", side_effect=[self.record, self.record, self.completed]), \
+                patch.object(rollback, "deployments", return_value=[self.record]), \
+                patch.object(rollback, "current_service", return_value=service), \
+                patch.object(rollback, "revision", return_value=self.source), \
+                patch.object(rollback, "verify_application", side_effect=RuntimeError("News failed")), \
+                patch.object(rollback.time, "sleep"), self.assertRaisesRegex(RuntimeError, "News failed"):
+            rollback.wait_for_recovery(plan, evidence, float("inf"))
+        observed = [call for call in evidence.event.call_args_list if call.args[0] == "ecs_recovery_observed"]
+        self.assertEqual(len(observed), 2)
+        self.assertNotIn("do-not-log", str(evidence.event.call_args_list))
+        self.assertNotIn("application_verified", [call.args[0] for call in evidence.event.call_args_list])
 
     def test_health_records_http_failure_and_rejects_invalid_json_shape(self):
         error = HTTPError(rollback.APP_URL, 500, "failure", {}, BytesIO(b""))

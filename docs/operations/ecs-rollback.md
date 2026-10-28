@@ -164,12 +164,27 @@ Artifacts are retained for 30 days, including on helper failure:
 - `plan.json`: selected release, digest and recovery identities; no runtime secrets.
 - Actions summary: image-selection method, tag/digest, source and CI-attempt links.
 - `events.jsonl`: UTC preflight, request, acceptance, ECS completion and functional
-  verification, or the observed failure.
+  verification, or the observed failure. `ecs_recovery_observed` records changed
+  deployment status and safe revision/task counts; `recovery_superseded` identifies
+  a later ECS deployment without logging runtime configuration or secrets.
 - `health.jsonl`: HTTP status, validated health result and latency from the runner,
   with a nominal one-second pause between sequential requests (three-second timeout).
 
 The helper waits up to 25 minutes after acceptance and polls ECS every five
 seconds. It keeps request timing separate from eventual control-plane completion.
+For an ongoing canary rollback, it requires `ROLLBACK_SUCCESSFUL` and the selected
+source in `currentServiceRevisions` at the desired running capacity, with no pending
+tasks or other requested/running workload. The source revision must still match
+the planned task definition and image digest. It repeats the revision and newer-
+deployment checks after health/news verification. The top-level service
+`taskDefinition` can be absent for this service; it is not used to identify the
+running source. See AWS's [current service revision summary](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_ServiceCurrentRevisionSummary.html).
+
+AWS rollback success and a failed Actions run can coexist. A rollback request can
+succeed before later verification fails, or a new forward release can replace the
+recovered revision. A later ECS deployment is reported explicitly rather than
+waiting 25 minutes for an image that has been superseded. This detection is not a
+lock: continue to pause merges and pending forward releases before recovery.
 It does not inject a fault, observe an error alarm, revert Git source, restore
 historic runtime configuration in `restore-image` mode, change static S3 content,
 or establish an SLO/zero-downtime claim. An ongoing rollback restores the whole
