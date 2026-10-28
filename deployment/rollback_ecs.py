@@ -353,7 +353,39 @@ def verify_application():
             raise RuntimeError("Post-rollback news/CORS verification failed")
 
 
+def recovered_source_is_running(plan, service):
+    # Canary/blue-green services can omit the top-level taskDefinition. The
+    # current revision summaries identify the workloads that are actually running.
+    desired = service.get("desiredCount", 0)
+    revisions = service.get("currentServiceRevisions", [])
+    sources = [item for item in revisions if item.get("arn") == plan["source_revision"]]
+    counts = ("requestedTaskCount", "runningTaskCount", "pendingTaskCount")
+    return (
+        desired > 0 and service.get("runningCount") == desired and service.get("pendingCount") == 0
+        and len(sources) == 1
+        and sources[0].get("requestedTaskCount") == desired
+        and sources[0].get("runningTaskCount") == desired
+        and sources[0].get("pendingTaskCount") == 0
+        and all(all(item.get(key) == 0 for key in counts)
+                for item in revisions if item.get("arn") != plan["source_revision"])
+    )
+
+
+def reject_later_deployment(plan, record, evidence):
+    created = datetime.fromisoformat(record["createdAt"])
+    later = [item for item in deployments()
+             if item["serviceDeploymentArn"] != plan["deployment_arn"]
+             and datetime.fromisoformat(item["createdAt"]) > created]
+    if later:
+        newest = max(later, key=lambda item: datetime.fromisoformat(item["createdAt"]))
+        evidence.event("recovery_superseded", deployment_arn=newest["serviceDeploymentArn"],
+                       status=newest["status"], rollback_status=record["status"])
+        raise RuntimeError("A later ECS deployment superseded this recovery; inspect the current image "
+                           "and pause forward releases before retrying. The recorded rollback result is separate.")
+
+
 def wait_for_recovery(plan, evidence, deadline):
+    last_observation = None
     while time.monotonic() < deadline:
         if plan["mode"] == "ongoing":
             record = deployment(plan["deployment_arn"])
@@ -361,19 +393,32 @@ def wait_for_recovery(plan, evidence, deadline):
             if status in {"ROLLBACK_FAILED", "STOPPED", "SUCCESSFUL"}:
                 raise RuntimeError(f"Requested rollback did not complete: {status}")
             service = current_service()
-            settled = (status == "ROLLBACK_SUCCESSFUL"
-                       and service.get("taskDefinition") == plan["source_task"]
-                       and service.get("runningCount", 0) == service.get("desiredCount", 0)
-                       and service.get("runningCount", 0) > 0 and service.get("pendingCount", 0) == 0)
+            observation = {"status": status, "finished_at": record.get("finishedAt"),
+                           "current_revisions": [{key: item.get(key) for key in
+                               ("arn", "requestedTaskCount", "runningTaskCount", "pendingTaskCount")}
+                               for item in service.get("currentServiceRevisions", [])],
+                           "desired": service.get("desiredCount"), "running": service.get("runningCount"),
+                           "pending": service.get("pendingCount")}
+            if observation != last_observation:
+                evidence.event("ecs_recovery_observed", **observation)
+                last_observation = observation
+            reject_later_deployment(plan, record, evidence)
+            settled = status == "ROLLBACK_SUCCESSFUL" and recovered_source_is_running(plan, service)
             if settled:
-                if main_digest(revision(plan["source_revision"])) != plan["release"]["digest"]:
-                    raise RuntimeError("Recovered service revision has the wrong image")
+                source = revision(plan["source_revision"])
+                if (source.get("taskDefinition") != plan["source_task"]
+                        or main_digest(source) != plan["release"]["digest"]):
+                    raise RuntimeError("Recovered service revision has the wrong task definition or image")
         else:
             result = aws("ecs", "describe-express-gateway-service", "--service-arn", SERVICE)
             settled = is_stable(result["service"], current_service(), plan["release"]["image"])
         if settled:
             evidence.event("ecs_recovery_completed")
             verify_application()
+            if plan["mode"] == "ongoing":
+                reject_later_deployment(plan, record, evidence)
+                if not recovered_source_is_running(plan, current_service()):
+                    raise RuntimeError("Recovered revision changed during application verification; inspect ECS")
             evidence.event("application_verified", digest=plan["release"]["digest"],
                            checks=["health_200_json_three_times", "nonempty_news", "cloudfront_cors"])
             return
