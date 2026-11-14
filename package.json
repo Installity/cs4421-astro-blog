@@ -23,7 +23,7 @@
     "@astrojs/node": "^11.1.6",
     "@astrojs/rss": "^4.0.19",
     "@astrojs/sitemap": "^3.7.4",
-    "astro": "^7.3.5",
+    "astro": "^7.4.12",
     "entities": "^2.2.0",
     "jiti": "^2.7.0",
     "rss-parser": "^3.13.0",
